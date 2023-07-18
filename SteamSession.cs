@@ -2,9 +2,12 @@
 
 using System;
 using System.Timers;
+using System.Threading.Tasks;
 
 using SteamKit2;
 using SteamKit2.CDN;
+
+using Dapper;
 
 class SteamSession
 {
@@ -16,7 +19,7 @@ class SteamSession
     public readonly SteamContent content;
 
     public readonly Client cdnClient;
-    public IReadOnlyCollection<Server>? cdnServers;
+    public IReadOnlyCollection<Server> cdnServers;
 
     private readonly CallbackManager callbackManager;
 
@@ -25,18 +28,6 @@ class SteamSession
     public bool isLoggedOn = false;
     public bool isRunning = true;
     public uint tickerHash = 0;
-
-    public class AppWatchInfo
-    {
-        public readonly uint Id;
-        public readonly uint Depot;
-        public readonly string Branch;
-
-        public AppWatchInfo(uint app, uint depot, string branch = "public") => (Id, Depot, Branch) = (app, depot, branch);
-    }
-
-    public readonly List<AppWatchInfo> appsToWatch =
-      new List<AppWatchInfo> { new AppWatchInfo(232250, 232256) };
 
     public SteamSession()
     {
@@ -54,6 +45,16 @@ class SteamSession
 
         callbackManager.Subscribe<SteamUser.LoggedOnCallback>(OnLoggedOn);
         callbackManager.Subscribe<SteamUser.LoggedOffCallback>(OnLoggedOff);
+
+        lastChangeNumber = LocalConfig.Get<uint>("lastSeenChangeNumber");
+
+        using (var db = Database.GetConnection()) {
+            if (lastChangeNumber == 0)
+                lastChangeNumber = db.ExecuteScalar<uint>("SELECT `ChangeID` FROM `DepotVersions` ORDER BY `ChangeID` DESC LIMIT 1");
+
+        }
+
+        Console.WriteLine($"Previous changelist was {lastChangeNumber}");
     }
 
     public void Run()
@@ -97,15 +98,15 @@ class SteamSession
 
         cdnServers = await content.GetServersForSteamPipe();
 
-        foreach (var server in cdnServers)
-        {
-            Console.WriteLine("Server: {0}", server.Host);
-            Console.WriteLine("\tVHost: {0}", server.VHost);
-            Console.WriteLine("\tPort: {0}", server.Port);
-            Console.WriteLine("\tProtocol: {0}", server.Protocol);
-        }
+        // foreach (var server in cdnServers)
+        // {
+        //     Console.WriteLine("Server: {0}", server.Host);
+        //     Console.WriteLine("\tVHost: {0}", server.VHost);
+        //     Console.WriteLine("\tPort: {0}", server.Port);
+        //     Console.WriteLine("\tProtocol: {0}", server.Protocol);
+        // }
 
-        Console.WriteLine("Logged On! Server time is {0}", cb.ServerTime);
+        Console.WriteLine("Logged On! Server time is {0}. Got {1} CDN servers.", cb.ServerTime, cdnServers.Count);
 
         isLoggedOn = true;
 
@@ -128,43 +129,67 @@ class SteamSession
 
     private async Task OnPICSChanges(SteamApps.PICSChangesCallback cb)
     {
-        var appsToProcess = new List<uint>();
-
-        var appIdsToWatch = appsToWatch.Select(i => i.Id);
-
+        // Console.WriteLine($"PICS Update {cb.LastChangeNumber} -> {cb.CurrentChangeNumber}");
         if (cb.CurrentChangeNumber == lastChangeNumber)
             return;
 
-        if (cb.RequiresFullUpdate || cb.RequiresFullAppUpdate)
+        bool needsUpdate = false;
+        uint? changeNumber = null;
+
+        if (cb.RequiresFullAppUpdate)
         {
-            appsToProcess.AddRange(appIdsToWatch);
             Console.WriteLine("Full app update required for change {0}", cb.CurrentChangeNumber);
+            needsUpdate = true;
         }
 
-        Console.WriteLine($"PICS Update {cb.LastChangeNumber} -> {cb.CurrentChangeNumber}");
         foreach (var appChange in cb.AppChanges.Values)
         {
-            Console.WriteLine("\tApp {0}", appChange.ID);
-            Console.WriteLine("\t\tchangelist: {0}", appChange.ChangeNumber);
-            Console.WriteLine("\t\tneedstoken: {0}", appChange.NeedsToken);
+            // Console.WriteLine("\tApp {0}", appChange.ID);
+            // Console.WriteLine("\t\tchangelist: {0}", appChange.ChangeNumber);
+            // Console.WriteLine("\t\tneedstoken: {0}", appChange.NeedsToken);
+
+            if (appChange.ID == Config.AppToWatch)
+            {
+                needsUpdate = true;
+                changeNumber = appChange.ChangeNumber;
+                break;
+            }
         }
 
-        appsToProcess.AddRange(
-          cb.AppChanges.Values
-            .Select(change => change.ID)
-            .Intersect(appIdsToWatch)
-        );
-
-
-        if (appsToProcess.Any())
+        if (needsUpdate)
         {
-            var manifestsToCheck =
-                await ManifestDownloader.FetchManifests(appsToProcess);
+            Console.WriteLine("Update needed!");
+            var appInfo = await InfoFetcher.FetchAppInfo(Config.AppToWatch, changeNumber);
+            if (appInfo != null)
+            {
+                await using var db = await Database.GetConnectionAsync();
+                await using var transaction = await db.BeginTransactionAsync();
 
-            await ManifestDownloader.FilterManifests(manifestsToCheck);
+                foreach (var depot in appInfo.Depots)
+                {
+                        await db.ExecuteAsync(@"
+                                INSERT INTO `DepotVersions`
+                                    (`ChangeID`, `AppID`, `DepotID`, `ManifestID`)
+                                    VALUES (@ChangeID, @AppID, @DepotID, @ManifestID)
+                                    ON DUPLICATE KEY UPDATE `ChangeID`=`ChangeID`;",
+                        new {
+                            ChangeID = appInfo.ChangeId,
+                            AppID = appInfo.AppId,
+                            DepotID = depot.DepotId,
+                            ManifestID = depot.ManifestId,
+                        }, transaction);
+                }
+
+                await transaction.CommitAsync();
+            }
+            else
+            {
+                Console.WriteLine("Couldn't get appinfo!");
+            }
         }
 
         lastChangeNumber = cb.CurrentChangeNumber;
+        LocalConfig.Set("lastSeenChangeNumber", lastChangeNumber.ToString());
     }
 
     private async Task ChangesTick()
@@ -179,6 +204,11 @@ class SteamSession
                 await OnPICSChanges(changes);
 
             }
+            catch (TaskCanceledException e)
+            {
+                Console.WriteLine($"PICSGetChangesSince TaskCancelledException, restarting");
+                client.Disconnect();
+            }
             catch (Exception e)
             {
                 Console.WriteLine($"PICSGetChangesSince: {e.GetType().Name}: {e.Message}");
@@ -186,5 +216,7 @@ class SteamSession
 
             await Task.Delay(3000);
         }
+
+        Console.WriteLine("ticker died...");
     }
 }
