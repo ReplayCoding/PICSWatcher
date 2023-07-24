@@ -1,13 +1,13 @@
 ﻿namespace GameTracker;
 
 using System;
-using System.Timers;
 using System.Threading.Tasks;
+using System.Timers;
+
+using Dapper;
 
 using SteamKit2;
 using SteamKit2.CDN;
-
-using Dapper;
 
 class SteamSession
 {
@@ -27,7 +27,7 @@ class SteamSession
 
     public bool isLoggedOn = false;
     public bool isRunning = true;
-    public uint tickerHash = 0;
+    public static uint tickerHash = 0;
 
     public SteamSession()
     {
@@ -48,7 +48,8 @@ class SteamSession
 
         lastChangeNumber = LocalConfig.Get<uint>("lastSeenChangeNumber");
 
-        using (var db = Database.GetConnection()) {
+        using (var db = Database.GetConnection())
+        {
             if (lastChangeNumber == 0)
                 lastChangeNumber = db.ExecuteScalar<uint>("SELECT `ChangeID` FROM `DepotVersions` ORDER BY `ChangeID` DESC LIMIT 1");
 
@@ -74,7 +75,7 @@ class SteamSession
         user.LogOnAnonymous();
     }
 
-    private void OnDisconnected(SteamClient.DisconnectedCallback cb)
+    private async void OnDisconnected(SteamClient.DisconnectedCallback cb)
     {
         if (!isRunning)
             return;
@@ -86,7 +87,7 @@ class SteamSession
         }
 
         Console.WriteLine("Disconnected! Trying to reconnect...");
-        Thread.Sleep(TimeSpan.FromSeconds(15));
+        await Task.Delay(TimeSpan.FromSeconds(15));
 
         client.Connect();
     }
@@ -109,8 +110,10 @@ class SteamSession
         Console.WriteLine("Logged On! Server time is {0}. Got {1} CDN servers.", cb.ServerTime, cdnServers.Count);
 
         isLoggedOn = true;
+        Downloader.downloadSignal = 1;
 
         Task.Run(ChangesTick);
+        Task.Run(Downloader.DownloadThread);
     }
 
     private void OnLoggedOff(SteamUser.LoggedOffCallback cb)
@@ -120,7 +123,7 @@ class SteamSession
         if (isLoggedOn)
         {
             isLoggedOn = false;
-            tickerHash++;
+            Interlocked.Increment(ref tickerHash);
         }
 
         // client.Disconnect();
@@ -156,31 +159,32 @@ class SteamSession
             }
         }
 
+        await using var db = await Database.GetConnectionAsync();
+        await using var transaction = await db.BeginTransactionAsync();
+
         if (needsUpdate)
         {
             Console.WriteLine("Update needed!");
             var appInfo = await InfoFetcher.FetchAppInfo(Config.AppToWatch, changeNumber);
             if (appInfo != null)
             {
-                await using var db = await Database.GetConnectionAsync();
-                await using var transaction = await db.BeginTransactionAsync();
 
                 foreach (var depot in appInfo.Depots)
                 {
-                        await db.ExecuteAsync(@"
+                    await db.ExecuteAsync(@"
                                 INSERT INTO `DepotVersions`
                                     (`ChangeID`, `AppID`, `DepotID`, `ManifestID`)
                                     VALUES (@ChangeID, @AppID, @DepotID, @ManifestID)
                                     ON DUPLICATE KEY UPDATE `ChangeID`=`ChangeID`;",
-                        new {
-                            ChangeID = appInfo.ChangeId,
-                            AppID = appInfo.AppId,
-                            DepotID = depot.DepotId,
-                            ManifestID = depot.ManifestId,
-                        }, transaction);
+                    new
+                    {
+                        ChangeID = appInfo.ChangeId,
+                        AppID = appInfo.AppId,
+                        DepotID = depot.DepotId,
+                        ManifestID = depot.ManifestId,
+                    }, transaction);
                 }
 
-                await transaction.CommitAsync();
             }
             else
             {
@@ -190,6 +194,12 @@ class SteamSession
 
         lastChangeNumber = cb.CurrentChangeNumber;
         LocalConfig.Set("lastSeenChangeNumber", lastChangeNumber.ToString());
+        await transaction.CommitAsync();
+        if (needsUpdate)
+        {
+            // Signal to downloader to check for updates
+            Downloader.downloadSignal = 1;
+        }
     }
 
     private async Task ChangesTick()
