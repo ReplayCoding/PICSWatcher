@@ -27,7 +27,7 @@ class SteamSession
 
     public bool isLoggedOn = false;
     public bool isRunning = true;
-    public static uint tickerHash = 0;
+    public uint tickerHash = 0;
 
     public SteamSession()
     {
