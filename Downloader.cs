@@ -22,6 +22,8 @@ class Downloader
         {
             return $"App: {AppID} Depot: {DepotID} Manifest: {ManifestID}";
         }
+
+        public ManifestInfo(uint appId, uint depotId, ulong manifestId) => (AppID, DepotID, ManifestID) = (appId, depotId, manifestId);
     };
 
     async static Task<byte[]?> GetDepotKey(uint appId, uint depotId, bool bypassCache = false)
@@ -100,6 +102,39 @@ class Downloader
         }
     }
 
+    async static Task<DepotManifest?> GetPrevManifest(uint changeId, uint appId, uint depotId)
+    {
+        await using var db = await Database.GetConnectionAsync();
+        var prevManifestIdResult = await db.QueryAsync<ulong>(
+                    "SELECT `ManifestID` from DepotVersions WHERE `ChangeID` < @ChangeID AND `DepotID` = @DepotID ORDER BY `ChangeID` DESC LIMIT 1",
+                    new { ChangeID = changeId, DepotID = depotId });
+
+        if (prevManifestIdResult.Count() > 0)
+        {
+            var prevManifestId = prevManifestIdResult.First();
+            var mi = new ManifestInfo(appId, depotId, prevManifestId);
+
+            var depotKey = await GetDepotKey(appId, depotId);
+            if (depotKey == null)
+                return null;
+
+            try
+            {
+                DepotManifest manifest = await FetchManifest(mi, depotKey);
+                if (manifest.Files == null)
+                    return null;
+
+                return manifest;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     async static Task DownloadChange(uint changeId)
     {
         Console.WriteLine("ChangeID: {0}", changeId);
@@ -131,9 +166,14 @@ class Downloader
                 continue;
             }
 
+            DepotManifest? prevManifest = await GetPrevManifest(changeId, depot.AppID, depot.DepotID);
+            string? prevPath = null;
+            if (prevManifest != null)
+                prevPath = Config.ContentDir;
+
             try
             {
-                await DownloadManifest(manifest, depotKey, downloadPath);
+                await DownloadManifest(manifest, depotKey, downloadPath, prevManifest, prevPath);
             }
             catch
             {
@@ -144,8 +184,8 @@ class Downloader
             Console.WriteLine("\t{0} {1}", depot, downloadPath);
         }
 
-        var finalOutputPath = Path.Join(Config.ContentDir, $"{changeId}");
-        Directory.Move(downloadPath, finalOutputPath);
+        Directory.Delete(Config.ContentDir, true);
+        Directory.Move(downloadPath, Config.ContentDir);
     }
 
     async static Task CheckUpdates()
