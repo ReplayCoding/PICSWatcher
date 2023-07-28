@@ -3,6 +3,7 @@ namespace GameTracker;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Security.Cryptography;
 
 using Dapper;
 
@@ -59,11 +60,54 @@ class Downloader
         return manifestContent;
     }
 
+    // TODO: Hash the chunks instead? Although, this is probably robust enough.
+    static bool VerifyFile(string fileName, DepotManifest.FileData fileData)
+    {
+
+        var sha1 = SHA1.Create();
+        using (var stream = File.OpenRead(fileName))
+        {
+            byte[] hash = sha1.ComputeHash(stream);
+            return fileData.FileHash.SequenceEqual(hash);
+        }
+    }
+
+    async static Task DownloadFile(string outFile, DepotManifest manifest, DepotManifest.FileData file, byte[] depotKey)
+    {
+        using (var of = File.Create(outFile))
+        {
+            of.SetLength((long)file.TotalSize);
+
+            foreach (var chunk in file.Chunks)
+            {
+                // TODO: Reuse previous version *chunks*
+                // TODO: Cycle through multiple servers when fetching chunks, in case a server is down
+                var downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, SteamSession.Instance.cdnServers.First(), depotKey);
+                if (downloadedChunk == null)
+                    throw new InvalidDataException($"Failed to download chunk {chunk.ChunkID} from manifest {manifest.ManifestGID}");
+
+                of.Seek((long)chunk.Offset, SeekOrigin.Begin);
+                of.Write(downloadedChunk.Data, 0, downloadedChunk.Data.Length);
+
+                // Console.WriteLine("\tchunk {0}", BitConverter.ToString(chunk.ChunkID));
+                // Console.WriteLine("\t\tchecksum {0}", BitConverter.ToString(chunk.Checksum));
+                // Console.WriteLine("\t\toffset {0}", chunk.Offset);
+                // Console.WriteLine("\t\tlength compressed {0}", chunk.CompressedLength);
+                // Console.WriteLine("\t\tlength uncompressed {0}", chunk.UncompressedLength);
+            }
+        };
+    }
+
     async static Task DownloadManifest(DepotManifest manifest, byte[] depotKey, string outputDir, DepotManifest? prevManifest = null, string? prevDir = null)
     {
         // Console.WriteLine($"Downloading manifest {manifest.ManifestGID}");
 
-        // TODO: Reuse previous version chunks to avoid redownload
+        Dictionary<string, DepotManifest.FileData>? prevFiles = null;
+        if (prevManifest != null)
+        {
+            prevFiles = prevManifest.Files.ToDictionary(f => f.FileName);
+        }
+
         foreach (var file in manifest.Files)
         {
             if (file.Flags.HasFlag(EDepotFileFlag.Directory))
@@ -72,8 +116,6 @@ class Downloader
             }
             else
             {
-                // Console.WriteLine("{0} | size: {1} | flags: {2}", file.FileName, file.TotalSize, file.Flags);
-
                 var outFile = Path.Join(outputDir, file.FileName);
                 if (Path.Exists(outFile))
                 {
@@ -81,24 +123,38 @@ class Downloader
                     continue;
                 };
 
-                using var of = File.Create(outFile);
-                of.SetLength((long)file.TotalSize);
-
-                foreach (var chunk in file.Chunks)
+                // Console.WriteLine("{0} | size: {1} | flags: {2}", file.FileName, file.TotalSize, file.Flags);
+                bool canReuse = false;
+                if (prevFiles != null)
                 {
-                    // TODO: Cycle through multiple servers when fetching chunks, in case a server is down
-                    var downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, SteamSession.Instance.cdnServers.First(), depotKey);
-                    if (downloadedChunk == null)
-                        throw new InvalidDataException($"Failed to download chunk {chunk.ChunkID} from manifest {manifest.ManifestGID}");
+                    DepotManifest.FileData? prevFile = null;
+                    prevFiles.TryGetValue(file.FileName, out prevFile);
 
-                    of.Seek((long)chunk.Offset, SeekOrigin.Begin);
-                    of.Write(downloadedChunk.Data, 0, downloadedChunk.Data.Length);
+                    if (prevFile != null && prevFile.FileHash.SequenceEqual(file.FileHash))
+                    {
+                        // Console.WriteLine("We could reuse {0}", prevFile.FileName);
+                        canReuse = true;
+                    }
+                }
 
-                    // Console.WriteLine("\tchunk {0}", BitConverter.ToString(chunk.ChunkID));
-                    // Console.WriteLine("\t\tchecksum {0}", BitConverter.ToString(chunk.Checksum));
-                    // Console.WriteLine("\t\toffset {0}", chunk.Offset);
-                    // Console.WriteLine("\t\tlength compressed {0}", chunk.CompressedLength);
-                    // Console.WriteLine("\t\tlength uncompressed {0}", chunk.UncompressedLength);
+                if (canReuse)
+                {
+                    // Console.WriteLine("Copying to {0} from {1}", Path.Join(outputDir, file.FileName), Path.Join(prevDir, file.FileName));
+                    File.Copy(Path.Join(prevDir, file.FileName), outFile);
+                }
+                else
+                {
+                    await DownloadFile(outFile, manifest, file, depotKey);
+                }
+
+                if (!VerifyFile(outFile, file))
+                {
+                    Console.WriteLine($"File {file.FileName} failed to verify, retrying download");
+                    await DownloadFile(outFile, manifest, file, depotKey);
+                    if (!VerifyFile(outFile, file))
+                    {
+                        throw new InvalidDataException($"File {file.FileName} failed to verify a second time, something is very wrong!");
+                    }
                 }
             }
         }
@@ -123,7 +179,7 @@ class Downloader
             try
             {
                 DepotManifest manifest = await FetchManifest(mi, depotKey);
-                if (manifest.Files == null)
+                if (manifest.Files == null || manifest.FilenamesEncrypted)
                     return null;
 
                 return manifest;
@@ -162,7 +218,7 @@ class Downloader
             }
 
             var manifest = await FetchManifest(depot, depotKey);
-            if (manifest.Files == null)
+            if (manifest.Files == null || manifest.FilenamesEncrypted)
             {
                 Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
                 continue;
