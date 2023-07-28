@@ -108,53 +108,65 @@ class Downloader
             prevFiles = prevManifest.Files.ToDictionary(f => f.FileName);
         }
 
+        // Create dirs first
         foreach (var file in manifest.Files)
         {
+            var outPath = Path.Join(outputDir, file.FileName);
+
             if (file.Flags.HasFlag(EDepotFileFlag.Directory))
             {
-                Directory.CreateDirectory(Path.Join(outputDir, file.FileName));
+                Directory.CreateDirectory(outPath);
             }
             else
             {
-                var outFile = Path.Join(outputDir, file.FileName);
-                if (Path.Exists(outFile))
-                {
-                    Console.WriteLine($"Path ${outFile} already exists, not replacing");
-                    continue;
-                };
+                Directory.CreateDirectory(Path.GetDirectoryName(outPath));
+            }
+        }
 
-                // Console.WriteLine("{0} | size: {1} | flags: {2}", file.FileName, file.TotalSize, file.Flags);
-                bool canReuse = false;
-                if (prevFiles != null)
-                {
-                    DepotManifest.FileData? prevFile = null;
-                    prevFiles.TryGetValue(file.FileName, out prevFile);
+        // Download files
+        foreach (var file in manifest.Files)
+        {
+            if (file.Flags.HasFlag(EDepotFileFlag.Directory))
+                continue;
 
-                    if (prevFile != null && prevFile.FileHash.SequenceEqual(file.FileHash))
-                    {
-                        // Console.WriteLine("We could reuse {0}", prevFile.FileName);
-                        canReuse = true;
-                    }
+            var outFile = Path.Join(outputDir, file.FileName);
+            if (Path.Exists(outFile))
+            {
+                Console.WriteLine($"Path {outFile} already exists, not replacing");
+                continue;
+            };
+
+            // Console.WriteLine("{0} | size: {1} | flags: {2}", file.FileName, file.TotalSize, file.Flags);
+            bool canReuse = false;
+            if (prevFiles != null)
+            {
+                DepotManifest.FileData? prevFile = null;
+                prevFiles.TryGetValue(file.FileName, out prevFile);
+
+                if (prevFile != null && prevFile.FileHash.SequenceEqual(file.FileHash))
+                {
+                    // Console.WriteLine("We could reuse {0}", prevFile.FileName);
+                    canReuse = true;
                 }
+            }
 
-                if (canReuse)
-                {
-                    // Console.WriteLine("Copying to {0} from {1}", Path.Join(outputDir, file.FileName), Path.Join(prevDir, file.FileName));
-                    File.Copy(Path.Join(prevDir, file.FileName), outFile);
-                }
-                else
-                {
-                    await DownloadFile(outFile, manifest, file, depotKey);
-                }
+            if (canReuse)
+            {
+                // Console.WriteLine("Copying to {0} from {1}", Path.Join(outputDir, file.FileName), Path.Join(prevDir, file.FileName));
+                File.Copy(Path.Join(prevDir, file.FileName), outFile);
+            }
+            else
+            {
+                await DownloadFile(outFile, manifest, file, depotKey);
+            }
 
+            if (!VerifyFile(outFile, file))
+            {
+                Console.WriteLine($"File {file.FileName} failed to verify, retrying download");
+                await DownloadFile(outFile, manifest, file, depotKey);
                 if (!VerifyFile(outFile, file))
                 {
-                    Console.WriteLine($"File {file.FileName} failed to verify, retrying download");
-                    await DownloadFile(outFile, manifest, file, depotKey);
-                    if (!VerifyFile(outFile, file))
-                    {
-                        throw new InvalidDataException($"File {file.FileName} failed to verify a second time, something is very wrong!");
-                    }
+                    throw new InvalidDataException($"File {file.FileName} failed to verify a second time, something is very wrong!");
                 }
             }
         }
@@ -207,7 +219,7 @@ class Downloader
         foreach (var depot in depots)
         {
             // XXX: For testing
-            if (!(new List<uint> { 232256, 232255 }.Contains(depot.DepotID)))
+            if (232256 != depot.DepotID)
                 continue;
 
             var depotKey = await GetDepotKey(depot.AppID, depot.DepotID);
@@ -280,6 +292,7 @@ class Downloader
                 catch (Exception e)
                 {
                     Console.WriteLine($"Error on downloader thread: {e.GetType().Name}: {e.Message}");
+                    Console.WriteLine("{0}", e.StackTrace);
                     await Task.Delay(TimeSpan.FromSeconds(55));
                     downloadSignal = 1;
                 }

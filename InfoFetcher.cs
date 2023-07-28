@@ -70,6 +70,12 @@ class InfoFetcher
               metaDataOnly: false
           );
 
+        if (productInfoResults.Results == null)
+        {
+            Console.WriteLine("Product info results are null!");
+            return null;
+        }
+
         var productInfo = productInfoResults.Results.FirstOrDefault(cb => cb.Apps.ContainsKey(appId));
 
         if (productInfo == null)
@@ -78,7 +84,8 @@ class InfoFetcher
             return null;
         }
 
-        if (productInfo.Apps.TryGetValue(appId, out SteamApps.PICSProductInfoCallback.PICSProductInfo info))
+        SteamApps.PICSProductInfoCallback.PICSProductInfo? info = null;
+        if (productInfo.Apps.TryGetValue(appId, out info))
         {
             if (expectedChangeNumber != null && info.ChangeNumber != expectedChangeNumber)
                 Console.WriteLine($"Expected change number {expectedChangeNumber}, got {info.ChangeNumber}");

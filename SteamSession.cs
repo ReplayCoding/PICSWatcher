@@ -2,7 +2,6 @@
 
 using System;
 using System.Threading.Tasks;
-using System.Timers;
 
 using Dapper;
 
@@ -112,8 +111,8 @@ class SteamSession
         isLoggedOn = true;
         Downloader.downloadSignal = 1;
 
-        Task.Run(ChangesTick);
-        Task.Run(Downloader.DownloadThread);
+        var _ = Task.Run(ChangesTick);
+        var _1 = Task.Run(Downloader.DownloadThread);
     }
 
     private void OnLoggedOff(SteamUser.LoggedOffCallback cb)
@@ -193,7 +192,7 @@ class SteamSession
         }
 
         lastChangeNumber = cb.CurrentChangeNumber;
-        LocalConfig.Set("lastSeenChangeNumber", lastChangeNumber.ToString());
+        await LocalConfig.Set("lastSeenChangeNumber", lastChangeNumber.ToString());
         await transaction.CommitAsync();
         if (needsUpdate)
         {
@@ -202,7 +201,7 @@ class SteamSession
         }
     }
 
-    private async Task ChangesTick()
+    private async void ChangesTick()
     {
         var currentHash = tickerHash;
 
@@ -216,7 +215,7 @@ class SteamSession
             }
             catch (TaskCanceledException e)
             {
-                Console.WriteLine($"PICSGetChangesSince TaskCancelledException, restarting");
+                Console.WriteLine($"PICSGetChangesSince TaskCancelledException, restarting ({e.Message})");
                 client.Disconnect();
             }
             catch (Exception e)
