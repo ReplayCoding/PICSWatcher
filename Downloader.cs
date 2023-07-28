@@ -1,9 +1,11 @@
 namespace GameTracker;
 
-using System.Linq;
 using System.IO;
+using System.Linq;
 using System.Threading;
+
 using Dapper;
+
 using SteamKit2;
 
 class Downloader
