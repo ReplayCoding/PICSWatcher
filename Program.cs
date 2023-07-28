@@ -6,8 +6,10 @@ class Program
 {
     private static void Main()
     {
-        Console.WriteLine("Connecting...");
+        // Setup content & temporary dirs
+        Config.SetupDirs();
 
+        Console.WriteLine("Connecting...");
         SteamSession.Instance.Run();
     }
 }

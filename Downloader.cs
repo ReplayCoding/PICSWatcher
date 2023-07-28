@@ -57,7 +57,7 @@ class Downloader
 
     async static Task DownloadManifest(DepotManifest manifest, byte[] depotKey, string outputDir, DepotManifest? prevManifest = null, string? prevDir = null)
     {
-        Console.WriteLine($"Downloading manifest {manifest.ManifestGID}");
+        // Console.WriteLine($"Downloading manifest {manifest.ManifestGID}");
 
         // TODO: Reuse previous version chunks to avoid redownload
         foreach (var file in manifest.Files)
@@ -100,7 +100,7 @@ class Downloader
         }
     }
 
-    async static Task ProcessChange(uint changeId)
+    async static Task DownloadChange(uint changeId)
     {
         Console.WriteLine("ChangeID: {0}", changeId);
 
@@ -110,6 +110,7 @@ class Downloader
                 new { ChangeID = changeId }
         );
 
+        var downloadPath = Util.GetNewTempDir();
         foreach (var depot in depots)
         {
             // XXX: For testing
@@ -130,20 +131,21 @@ class Downloader
                 continue;
             }
 
-            var downloadPath = Util.GetNewTempDir();
             try
             {
-                // await DownloadManifest(manifest, depotKey, downloadPath);
+                await DownloadManifest(manifest, depotKey, downloadPath);
             }
             catch
             {
                 Directory.Delete(downloadPath, true);
                 throw;
             }
-            Directory.Delete(downloadPath, true);
 
             Console.WriteLine("\t{0} {1}", depot, downloadPath);
         }
+
+        var finalOutputPath = Path.Join(Config.ContentDir, $"{changeId}");
+        Directory.Move(downloadPath, finalOutputPath);
     }
 
     async static Task CheckUpdates()
@@ -159,7 +161,7 @@ class Downloader
 
         foreach (uint changeId in changeIdsToProcess)
         {
-            await ProcessChange(changeId);
+            await DownloadChange(changeId);
             // await LocalConfig.Set("lastProcessedChangeNumber", changeIdsToProcess.LastOrDefault(lastProcessedChangeNumber).ToString());
         }
     }
