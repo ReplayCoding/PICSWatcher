@@ -1,10 +1,9 @@
 namespace GameTracker;
 
 using System.Linq;
+using System.IO;
 using System.Threading;
-
 using Dapper;
-
 using SteamKit2;
 
 class Downloader
@@ -47,6 +46,106 @@ class Downloader
         return null;
     }
 
+    async static Task<DepotManifest> FetchManifest(ManifestInfo info, byte[] depotKey)
+    {
+        await using var db = await Database.GetConnectionAsync();
+        var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Config.Branch);
+        var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, SteamSession.Instance.cdnServers.First(), depotKey);
+
+        return manifestContent;
+    }
+
+    async static Task DownloadManifest(DepotManifest manifest, byte[] depotKey, string outputDir, DepotManifest? prevManifest = null, string? prevDir = null)
+    {
+        Console.WriteLine($"Downloading manifest {manifest.ManifestGID}");
+
+        // TODO: Reuse previous version chunks to avoid redownload
+        foreach (var file in manifest.Files)
+        {
+            if (file.Flags.HasFlag(EDepotFileFlag.Directory))
+            {
+                Directory.CreateDirectory(Path.Join(outputDir, file.FileName));
+            }
+            else
+            {
+                // Console.WriteLine("{0} | size: {1} | flags: {2}", file.FileName, file.TotalSize, file.Flags);
+
+                var outFile = Path.Join(outputDir, file.FileName);
+                if (Path.Exists(outFile))
+                {
+                    Console.WriteLine($"Path ${outFile} already exists, not replacing");
+                    continue;
+                };
+
+                using var of = File.Create(outFile);
+                of.SetLength((long)file.TotalSize);
+
+                foreach (var chunk in file.Chunks)
+                {
+                    // TODO: Cycle through multiple servers when fetching chunks, in case a server is down
+                    var downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, SteamSession.Instance.cdnServers.First(), depotKey);
+                    if (downloadedChunk == null)
+                        throw new InvalidDataException($"Failed to download chunk {chunk.ChunkID} from manifest {manifest.ManifestGID}");
+
+                    of.Seek((long)chunk.Offset, SeekOrigin.Begin);
+                    of.Write(downloadedChunk.Data, 0, downloadedChunk.Data.Length);
+
+                    // Console.WriteLine("\tchunk {0}", BitConverter.ToString(chunk.ChunkID));
+                    // Console.WriteLine("\t\tchecksum {0}", BitConverter.ToString(chunk.Checksum));
+                    // Console.WriteLine("\t\toffset {0}", chunk.Offset);
+                    // Console.WriteLine("\t\tlength compressed {0}", chunk.CompressedLength);
+                    // Console.WriteLine("\t\tlength uncompressed {0}", chunk.UncompressedLength);
+                }
+            }
+        }
+    }
+
+    async static Task ProcessChange(uint changeId)
+    {
+        Console.WriteLine("ChangeID: {0}", changeId);
+
+        await using var db = await Database.GetConnectionAsync();
+        var depots = await db.QueryAsync<ManifestInfo>(
+                "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID",
+                new { ChangeID = changeId }
+        );
+
+        foreach (var depot in depots)
+        {
+            // XXX: For testing
+            if (!(new List<uint> { 232256, 232255 }.Contains(depot.DepotID)))
+                continue;
+
+            var depotKey = await GetDepotKey(depot.AppID, depot.DepotID);
+            if (depotKey == null)
+            {
+                Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
+                continue;
+            }
+
+            var manifest = await FetchManifest(depot, depotKey);
+            if (manifest.Files == null)
+            {
+                Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
+                continue;
+            }
+
+            var downloadPath = Util.GetNewTempDir();
+            try
+            {
+                // await DownloadManifest(manifest, depotKey, downloadPath);
+            }
+            catch
+            {
+                Directory.Delete(downloadPath, true);
+                throw;
+            }
+            Directory.Delete(downloadPath, true);
+
+            Console.WriteLine("\t{0} {1}", depot, downloadPath);
+        }
+    }
+
     async static Task CheckUpdates()
     {
         var lastProcessedChangeNumber = await LocalConfig.GetAsync<uint>("lastProcessedChangeNumber");
@@ -54,29 +153,13 @@ class Downloader
         // Get sorted list of changeids to process
         await using var db = await Database.GetConnectionAsync();
         IEnumerable<uint> changeIdsToProcess = await db.QueryAsync<uint>(
-                "select DISTINCT `ChangeID` from DepotVersions WHERE ChangeID > @LastProcessedChangeNumber ORDER BY `ChangeID` ASC ",
+                "select DISTINCT `ChangeID` from DepotVersions WHERE ChangeID > @LastProcessedChangeNumber ORDER BY `ChangeID` ASC",
                 new { LastProcessedChangeNumber = lastProcessedChangeNumber }
         );
 
         foreach (uint changeId in changeIdsToProcess)
         {
-            Console.WriteLine("ChangeID: {0}", changeId);
-            var depots = await db.QueryAsync<ManifestInfo>(
-                    "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID",
-                    new { ChangeID = changeId }
-            );
-            foreach (var depot in depots)
-            {
-                var depotKey = await GetDepotKey(depot.AppID, depot.DepotID);
-                if (depotKey == null)
-                {
-                    Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
-                    continue;
-                }
-
-                Console.WriteLine("\t{0}", depot);
-            }
-
+            await ProcessChange(changeId);
             // await LocalConfig.Set("lastProcessedChangeNumber", changeIdsToProcess.LastOrDefault(lastProcessedChangeNumber).ToString());
         }
     }
@@ -98,6 +181,7 @@ class Downloader
                 {
                     Console.WriteLine($"Error on downloader thread: {e.GetType().Name}: {e.Message}");
                     await Task.Delay(TimeSpan.FromSeconds(55));
+                    downloadSignal = 1;
                 }
             }
 
