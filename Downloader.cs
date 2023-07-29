@@ -13,51 +13,6 @@ class Downloader
 {
     private static readonly SemaphoreSlim DownloadSem = new SemaphoreSlim(1, 1);
 
-    class ManifestInfo
-    {
-        public readonly uint AppID;
-        public readonly uint DepotID;
-        public readonly ulong ManifestID;
-
-        public override string ToString()
-        {
-            return $"App: {AppID} Depot: {DepotID} Manifest: {ManifestID}";
-        }
-
-        public ManifestInfo(uint appId, uint depotId, ulong manifestId) => (AppID, DepotID, ManifestID) = (appId, depotId, manifestId);
-    };
-
-    async static Task<byte[]?> GetDepotKey(uint appId, uint depotId, bool bypassCache = false)
-    {
-        await using var db = await Database.GetConnectionAsync();
-        var decryptionKeys = await db.QueryAsync<string>("SELECT `Key` FROM `DepotKeys` WHERE `DepotID` = @DepotID", new { DepotID = depotId });
-        if (decryptionKeys.Count() > 0)
-        {
-            var key = decryptionKeys.First();
-            // Console.WriteLine("Cached depot key is {0}", decryptionKeys.First());
-            return Convert.FromHexString(key);
-        };
-
-        var depotKey = await SteamSession.Instance.apps.GetDepotDecryptionKey(depotId, appId);
-        if (depotKey.Result == EResult.OK)
-        {
-            await db.ExecuteAsync("INSERT INTO `DepotKeys` (`DepotID`, `Key`) VALUES (@DepotID, @Key) ON DUPLICATE KEY UPDATE `Key` = VALUES(`Key`)", new { DepotID = depotId, Key = Convert.ToHexString(depotKey.DepotKey) });
-            return depotKey.DepotKey;
-        }
-
-        Console.WriteLine($"Couldn't get depot key for {depotId}, got result {depotKey.Result}");
-        return null;
-    }
-
-    async static Task<DepotManifest> FetchManifest(ManifestInfo info, byte[] depotKey)
-    {
-        await using var db = await Database.GetConnectionAsync();
-        var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Config.Branch);
-        var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, SteamSession.Instance.cdnServers.First(), depotKey);
-
-        return manifestContent;
-    }
-
     // TODO: Hash the chunks instead? Although, this is probably robust enough.
     static bool VerifyFile(string fileName, DepotManifest.FileData fileData)
     {
@@ -181,15 +136,15 @@ class Downloader
         if (prevManifestIdResult.Count() > 0)
         {
             var prevManifestId = prevManifestIdResult.First();
-            var mi = new ManifestInfo(appId, depotId, prevManifestId);
+            var mi = new InfoFetcher.ManifestInfo(appId, depotId, prevManifestId);
 
-            var depotKey = await GetDepotKey(appId, depotId);
+            var depotKey = await InfoFetcher.GetDepotKey(appId, depotId);
             if (depotKey == null)
                 return null;
 
             try
             {
-                DepotManifest manifest = await FetchManifest(mi, depotKey);
+                DepotManifest manifest = await InfoFetcher.FetchManifest(mi, depotKey);
                 if (manifest.Files == null || manifest.FilenamesEncrypted)
                     return null;
 
@@ -209,7 +164,7 @@ class Downloader
         Console.WriteLine("ChangeID: {0}", changeId);
 
         await using var db = await Database.GetConnectionAsync();
-        var depots = await db.QueryAsync<ManifestInfo>(
+        var depots = await db.QueryAsync<InfoFetcher.ManifestInfo>(
                 "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID",
                 new { ChangeID = changeId }
         );
@@ -224,14 +179,14 @@ class Downloader
                 if (232256 != depot.DepotID)
                     continue;
 
-                var depotKey = await GetDepotKey(depot.AppID, depot.DepotID);
+                var depotKey = await InfoFetcher.GetDepotKey(depot.AppID, depot.DepotID);
                 if (depotKey == null)
                 {
                     Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
                     continue;
                 }
 
-                var manifest = await FetchManifest(depot, depotKey);
+                var manifest = await InfoFetcher.FetchManifest(depot, depotKey);
                 if (manifest.Files == null || manifest.FilenamesEncrypted)
                 {
                     Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");

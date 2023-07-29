@@ -1,7 +1,8 @@
 ﻿namespace GameTracker;
 
 using System;
-using System.Timers;
+
+using Dapper;
 
 using SteamKit2;
 using SteamKit2.CDN;
@@ -26,6 +27,20 @@ class InfoFetcher
         public AppInfo(uint appId, uint changeId, List<DepotInfo> depots) => (AppId, ChangeId, Depots) = (appId, changeId, depots);
     };
 
+    public class ManifestInfo
+    {
+        public readonly uint AppID;
+        public readonly uint DepotID;
+        public readonly ulong ManifestID;
+
+        public override string ToString()
+        {
+            return $"App: {AppID} Depot: {DepotID} Manifest: {ManifestID}";
+        }
+
+        public ManifestInfo(uint appId, uint depotId, ulong manifestId) => (AppID, DepotID, ManifestID) = (appId, depotId, manifestId);
+    };
+
     // unorganized! (appid, depotid)
     static readonly Dictionary<KeyValuePair<uint, uint>, byte[]> DepotKeys;
 
@@ -34,24 +49,37 @@ class InfoFetcher
         DepotKeys = new Dictionary<KeyValuePair<uint, uint>, byte[]>();
     }
 
-    private async static Task<byte[]?> GetDepotKey(uint app, uint depot)
+    public async static Task<byte[]?> GetDepotKey(uint appId, uint depotId, bool bypassCache = false)
     {
-        var lookupKey = new KeyValuePair<uint, uint>(app, depot);
-
-        byte[]? depotKey = null;
-        if (!DepotKeys.TryGetValue(lookupKey, out depotKey))
+        await using var db = await Database.GetConnectionAsync();
+        var decryptionKeys = await db.QueryAsync<string>("SELECT `Key` FROM `DepotKeys` WHERE `DepotID` = @DepotID", new { DepotID = depotId });
+        if (decryptionKeys.Count() > 0)
         {
-            var depotKeyResult =
-                await SteamSession.Instance.apps.GetDepotDecryptionKey(depot, app);
+            var key = decryptionKeys.First();
+            // Console.WriteLine("Cached depot key is {0}", decryptionKeys.First());
+            return Convert.FromHexString(key);
+        };
 
-            if (depotKeyResult.Result == EResult.OK)
-                depotKey = depotKeyResult.DepotKey;
-
-            DepotKeys.Add(new KeyValuePair<uint, uint>(app, depot), depotKey);
+        var depotKey = await SteamSession.Instance.apps.GetDepotDecryptionKey(depotId, appId);
+        if (depotKey.Result == EResult.OK)
+        {
+            await db.ExecuteAsync("INSERT INTO `DepotKeys` (`DepotID`, `Key`) VALUES (@DepotID, @Key) ON DUPLICATE KEY UPDATE `Key` = VALUES(`Key`)", new { DepotID = depotId, Key = Convert.ToHexString(depotKey.DepotKey) });
+            return depotKey.DepotKey;
         }
 
-        return depotKey;
+        Console.WriteLine($"Couldn't get depot key for {depotId}, got result {depotKey.Result}");
+        return null;
     }
+
+    public async static Task<DepotManifest> FetchManifest(ManifestInfo info, byte[] depotKey)
+    {
+        await using var db = await Database.GetConnectionAsync();
+        var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Config.Branch);
+        var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, SteamSession.Instance.cdnServers.First(), depotKey);
+
+        return manifestContent;
+    }
+
 
     public static async Task<AppInfo?> FetchAppInfo(uint appId, uint? expectedChangeNumber)
     {
