@@ -2,8 +2,8 @@ namespace GameTracker;
 
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Security.Cryptography;
+using System.Threading;
 
 using Dapper;
 
@@ -11,9 +11,7 @@ using SteamKit2;
 
 class Downloader
 {
-    // 1 for needs update, 0 for not
-    // I want a bool :(
-    public static int downloadSignal;
+    private static readonly SemaphoreSlim DownloadSem = new SemaphoreSlim(1, 1);
 
     class ManifestInfo
     {
@@ -157,6 +155,7 @@ class Downloader
             }
             else
             {
+                // Console.WriteLine("Downloading {0}", outFile);
                 await DownloadFile(outFile, manifest, file, depotKey);
             }
 
@@ -216,42 +215,43 @@ class Downloader
         );
 
         var downloadPath = Util.GetNewTempDir();
-        foreach (var depot in depots)
+
+        try
         {
-            // XXX: For testing
-            if (232256 != depot.DepotID)
-                continue;
-
-            var depotKey = await GetDepotKey(depot.AppID, depot.DepotID);
-            if (depotKey == null)
+            foreach (var depot in depots)
             {
-                Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
-                continue;
-            }
+                // XXX: For testing
+                if (232256 != depot.DepotID)
+                    continue;
 
-            var manifest = await FetchManifest(depot, depotKey);
-            if (manifest.Files == null || manifest.FilenamesEncrypted)
-            {
-                Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
-                continue;
-            }
+                var depotKey = await GetDepotKey(depot.AppID, depot.DepotID);
+                if (depotKey == null)
+                {
+                    Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
+                    continue;
+                }
 
-            DepotManifest? prevManifest = await GetPrevManifest(changeId, depot.AppID, depot.DepotID);
-            string? prevPath = null;
-            if (prevManifest != null)
-                prevPath = Config.ContentDir;
+                var manifest = await FetchManifest(depot, depotKey);
+                if (manifest.Files == null || manifest.FilenamesEncrypted)
+                {
+                    Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
+                    continue;
+                }
 
-            try
-            {
+                DepotManifest? prevManifest = await GetPrevManifest(changeId, depot.AppID, depot.DepotID);
+                string? prevPath = null;
+                if (prevManifest != null)
+                    prevPath = Config.ContentDir;
+
                 await DownloadManifest(manifest, depotKey, downloadPath, prevManifest, prevPath);
-            }
-            catch
-            {
-                Directory.Delete(downloadPath, true);
-                throw;
-            }
 
-            Console.WriteLine("\t{0} {1}", depot, downloadPath);
+                Console.WriteLine("\t{0} {1}", depot, downloadPath);
+            }
+        }
+        catch
+        {
+            Directory.Delete(downloadPath, true);
+            throw;
         }
 
         Directory.Delete(Config.ContentDir, true);
@@ -276,31 +276,10 @@ class Downloader
         }
     }
 
-    public async static void DownloadThread()
+    public async static void RunUpdates()
     {
-        var currentHash = SteamSession.Instance.tickerHash;
-
-        while (currentHash == SteamSession.Instance.tickerHash)
-        {
-            if (1 == Interlocked.CompareExchange(ref downloadSignal, 0, 1))
-            {
-                Console.WriteLine("Update check was requested");
-                try
-                {
-                    await CheckUpdates();
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Error on downloader thread: {e.GetType().Name}: {e.Message}");
-                    Console.WriteLine("{0}", e.StackTrace);
-                    await Task.Delay(TimeSpan.FromSeconds(55));
-                    downloadSignal = 1;
-                }
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(5));
-        }
-
-        Console.WriteLine("ticker changed, downloader thread dying now");
+        await DownloadSem.WaitAsync();
+        await CheckUpdates();
+        DownloadSem.Release();
     }
 }

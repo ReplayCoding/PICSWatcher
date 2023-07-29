@@ -11,5 +11,6 @@ class Program
 
         Console.WriteLine("Connecting...");
         SteamSession.Instance.Run();
+        Console.WriteLine("Done");
     }
 }
