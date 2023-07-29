@@ -52,13 +52,17 @@ class InfoFetcher
     public async static Task<byte[]?> GetDepotKey(uint appId, uint depotId, bool bypassCache = false)
     {
         await using var db = await Database.GetConnectionAsync();
-        var decryptionKeys = await db.QueryAsync<string>("SELECT `Key` FROM `DepotKeys` WHERE `DepotID` = @DepotID", new { DepotID = depotId });
-        if (decryptionKeys.Count() > 0)
+
+        if (!bypassCache)
         {
-            var key = decryptionKeys.First();
-            // Console.WriteLine("Cached depot key is {0}", decryptionKeys.First());
-            return Convert.FromHexString(key);
-        };
+            var decryptionKeys = await db.QueryAsync<string>("SELECT `Key` FROM `DepotKeys` WHERE `DepotID` = @DepotID", new { DepotID = depotId });
+            if (decryptionKeys.Count() > 0)
+            {
+                var key = decryptionKeys.First();
+                // Console.WriteLine("Cached depot key is {0}", decryptionKeys.First());
+                return Convert.FromHexString(key);
+            };
+        }
 
         var depotKey = await SteamSession.Instance.apps.GetDepotDecryptionKey(depotId, appId);
         if (depotKey.Result == EResult.OK)
