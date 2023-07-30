@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Diagnostics;
 
 using Dapper;
 
@@ -31,6 +32,7 @@ class Downloader
         {
             of.SetLength((long)file.TotalSize);
 
+            // TODO: Download multiple chunks at the same time
             foreach (var chunk in file.Chunks)
             {
                 // TODO: Reuse previous version *chunks*
@@ -61,7 +63,7 @@ class Downloader
             prevFiles = prevManifest.Files.ToDictionary(f => f.FileName);
         }
 
-        // Create dirs first
+        // Pre-allocate dirs
         foreach (var file in manifest.Files)
         {
             var outPath = Path.Join(outputDir, file.FileName);
@@ -112,6 +114,7 @@ class Downloader
             {
                 // Console.WriteLine("Downloading {0}", outFile);
                 await DownloadFile(outFile, manifest, file, depotKey);
+                // Console.WriteLine("Downloaded {0}", outFile);
             }
 
             if (!VerifyFile(outFile, file))
@@ -159,6 +162,30 @@ class Downloader
         return null;
     }
 
+    async static Task DownloadDepot(InfoFetcher.ManifestInfo depot, string downloadPath, uint changeId)
+    {
+        var depotKey = await InfoFetcher.GetDepotKey(depot.AppID, depot.DepotID);
+        if (depotKey == null)
+        {
+            Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
+            return;
+        }
+
+        var manifest = await InfoFetcher.FetchManifest(depot, depotKey);
+        if (manifest.Files == null || manifest.FilenamesEncrypted)
+        {
+            Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
+            return;
+        }
+
+        DepotManifest? prevManifest = await GetPrevManifest(changeId, depot.AppID, depot.DepotID);
+        string? prevPath = null;
+        if (prevManifest != null)
+            prevPath = Config.ContentDir;
+
+        await DownloadManifest(manifest, depotKey, downloadPath, prevManifest, prevPath);
+    }
+
     async static Task DownloadChange(uint changeId)
     {
         Console.WriteLine("ChangeID: {0}", changeId);
@@ -169,7 +196,7 @@ class Downloader
                 new { ChangeID = changeId }
         );
 
-        var downloadPath = Util.GetNewTempDir();
+        var tempDownloadPath = Util.GetNewTempDir("download");
 
         try
         {
@@ -179,38 +206,36 @@ class Downloader
                 if (232256 != depot.DepotID)
                     continue;
 
-                var depotKey = await InfoFetcher.GetDepotKey(depot.AppID, depot.DepotID);
-                if (depotKey == null)
-                {
-                    Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
-                    continue;
-                }
-
-                var manifest = await InfoFetcher.FetchManifest(depot, depotKey);
-                if (manifest.Files == null || manifest.FilenamesEncrypted)
-                {
-                    Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
-                    continue;
-                }
-
-                DepotManifest? prevManifest = await GetPrevManifest(changeId, depot.AppID, depot.DepotID);
-                string? prevPath = null;
-                if (prevManifest != null)
-                    prevPath = Config.ContentDir;
-
-                await DownloadManifest(manifest, depotKey, downloadPath, prevManifest, prevPath);
-
-                Console.WriteLine("\t{0} {1}", depot, downloadPath);
+                await DownloadDepot(depot, tempDownloadPath, changeId);
+                Console.WriteLine("\t{0} {1}", depot, tempDownloadPath);
             }
         }
         catch
         {
-            Directory.Delete(downloadPath, true);
+            Directory.Delete(tempDownloadPath, true);
             throw;
         }
 
         Directory.Delete(Config.ContentDir, true);
-        Directory.Move(downloadPath, Config.ContentDir);
+        Directory.Move(tempDownloadPath, Config.ContentDir);
+    }
+
+    async static Task ProcessContent(string inDir, string outDir)
+    {
+        // TODO!!!!
+        var tempOut = Util.GetNewTempDir("processed");
+
+        var p = new Process();
+        p.StartInfo.WorkingDirectory = "/home/user/Projects/tf2_stuff/GameTracking-FINAL/DataMiner";
+        p.StartInfo.FileName = "/home/user/Projects/tf2_stuff/GameTracking-FINAL/DataMiner/__main__.py";
+        p.StartInfo.Arguments = $"--config=/home/user/Projects/tf2_stuff/GameTracking-FINAL/DataMiner/config.yaml \"{Path.GetFullPath(inDir)}\" \"{Path.GetFullPath(tempOut)}\"";
+        p.Start();
+        await p.WaitForExitAsync();
+
+        if (p.ExitCode != 0)
+            throw new Exception($"Got exit code {p.ExitCode} while running processer");
+
+        Directory.Move(tempOut, outDir);
     }
 
     async static Task CheckUpdates()
@@ -227,6 +252,7 @@ class Downloader
         foreach (uint changeId in changeIdsToProcess)
         {
             await DownloadChange(changeId);
+            await ProcessContent(Config.ContentDir, Path.Join(Config.ProcessedDir, $"{changeId}"));
             // await LocalConfig.Set("lastProcessedChangeNumber", changeIdsToProcess.LastOrDefault(lastProcessedChangeNumber).ToString());
         }
     }
