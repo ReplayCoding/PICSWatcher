@@ -107,7 +107,7 @@ class PICSChanges
         }
 
         LastChangeNumber = cb.CurrentChangeNumber;
-        await LocalConfig.Set("lastSeenChangeNumber", LastChangeNumber.ToString());
+        await LocalConfig.SetAsync("lastSeenChangeNumber", LastChangeNumber.ToString());
         await transaction.CommitAsync();
 
         if (needsUpdate)

@@ -8,6 +8,7 @@ class Config
     public static readonly string DbConnectionString = "server=localhost;userid=gametracking;password=password;database=gametracking;";
 
     public static readonly string DataDir = "Data";
+    public static readonly string RepoDir = "Repo";
 
     public static readonly string ContentDir = Path.Join(DataDir, "Content");
     public static readonly string ProcessedDir = Path.Join(DataDir, "Processed");

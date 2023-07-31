@@ -220,9 +220,8 @@ class Downloader
         Directory.Move(tempDownloadPath, Config.ContentDir);
     }
 
-    async static Task ProcessContent(string inDir, string outDir)
+    async static Task ProcessContent(string inDir, string outDir, string message)
     {
-        // TODO!!!!
         var tempOut = Util.GetNewTempDir("processed");
 
         var p = new Process();
@@ -235,7 +234,29 @@ class Downloader
         if (p.ExitCode != 0)
             throw new Exception($"Got exit code {p.ExitCode} while running processer");
 
+        if (Directory.Exists(outDir))
+            Directory.Delete(outDir, true);
         Directory.Move(tempOut, outDir);
+
+        var gitProc = new Process();
+        gitProc.StartInfo.WorkingDirectory = outDir;
+        gitProc.StartInfo.FileName = "git";
+        gitProc.StartInfo.Arguments = "add -A";
+        gitProc.Start();
+        await gitProc.WaitForExitAsync();
+
+        if (gitProc.ExitCode != 0)
+            throw new Exception($"Got exit code {gitProc.ExitCode} while running git add");
+
+        gitProc = new Process();
+        gitProc.StartInfo.WorkingDirectory = outDir;
+        gitProc.StartInfo.FileName = "git";
+        gitProc.StartInfo.Arguments = $"commit --allow-empty -a -m \"{message}\"";
+        gitProc.Start();
+        await gitProc.WaitForExitAsync();
+
+        if (gitProc.ExitCode != 0)
+            throw new Exception($"Got exit code {gitProc.ExitCode} while running git commit");
     }
 
     async static Task CheckUpdates()
@@ -252,8 +273,8 @@ class Downloader
         foreach (uint changeId in changeIdsToProcess)
         {
             await DownloadChange(changeId);
-            await ProcessContent(Config.ContentDir, Path.Join(Config.ProcessedDir, $"{changeId}"));
-            // await LocalConfig.Set("lastProcessedChangeNumber", changeIdsToProcess.LastOrDefault(lastProcessedChangeNumber).ToString());
+            await ProcessContent(Config.ContentDir, Path.Join(Config.RepoDir, "Content"), $"change {changeId}");
+            await LocalConfig.SetAsync("lastProcessedChangeNumber", changeId.ToString());
         }
     }
 

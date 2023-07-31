@@ -6,11 +6,26 @@ using MySqlConnector;
 
 class LocalConfig
 {
-    public static async Task Set(string key, string value)
+    public static async Task SetAsync(string key, string value)
     {
         // Console.WriteLine($"LocalConfig setting `{key}` to `{value}`");
         await using var connection = await Database.GetConnectionAsync();
         await connection.ExecuteAsync(@"
+                INSERT INTO `LocalConfig` (`Key`, `Value`)
+                    VALUES (@Key, @Value)
+                    ON DUPLICATE KEY UPDATE `Value` = VALUES(`Value`)",
+                    new
+                    {
+                        Key = key,
+                        Value = value
+                    });
+    }
+
+    public static void Set(string key, string value)
+    {
+        // Console.WriteLine($"LocalConfig setting `{key}` to `{value}`");
+        using var connection = Database.GetConnection();
+        connection.Execute(@"
                 INSERT INTO `LocalConfig` (`Key`, `Value`)
                     VALUES (@Key, @Value)
                     ON DUPLICATE KEY UPDATE `Value` = VALUES(`Value`)",
