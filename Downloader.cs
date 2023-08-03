@@ -192,8 +192,8 @@ class Downloader
 
         await using var db = await Database.GetConnectionAsync();
         var depots = await db.QueryAsync<InfoFetcher.ManifestInfo>(
-                "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID",
-                new { ChangeID = changeId }
+                "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID AND AppID = @AppID",
+                new { ChangeID = changeId, AppID = Config.AppToWatch }
         );
 
         var tempDownloadPath = Util.GetNewTempDir("download");
@@ -203,11 +203,11 @@ class Downloader
             foreach (var depot in depots)
             {
                 // XXX: For testing
-                if (232256 != depot.DepotID)
+                if (232252 != depot.DepotID)
                     continue;
 
                 await DownloadDepot(depot, tempDownloadPath, changeId);
-                Console.WriteLine("\t{0} {1}", depot, tempDownloadPath);
+                Console.WriteLine("\t{0}", depot);
             }
         }
         catch
