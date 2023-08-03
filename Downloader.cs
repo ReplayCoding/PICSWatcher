@@ -129,12 +129,16 @@ class Downloader
         }
     }
 
-    async static Task<DepotManifest?> GetPrevManifest(uint changeId, uint appId, uint depotId)
+    async static Task<DepotManifest?> GetPrevPulledManifest(uint appId, uint depotId)
     {
         await using var db = await Database.GetConnectionAsync();
+        var prevChangeId = LocalConfig.Get<uint?>("lastProcessedChangeNumber");
+        if (prevChangeId == null)
+            return null;
+
         var prevManifestIdResult = await db.QueryAsync<ulong>(
-                    "SELECT `ManifestID` from DepotVersions WHERE `ChangeID` < @ChangeID AND `DepotID` = @DepotID ORDER BY `ChangeID` DESC LIMIT 1",
-                    new { ChangeID = changeId, DepotID = depotId });
+                    "SELECT `ManifestID` from DepotVersions WHERE `ChangeID` = @ChangeID AND `DepotID` = @DepotID ORDER BY `ChangeID` DESC LIMIT 1",
+                    new { ChangeID = prevChangeId, DepotID = depotId });
 
         if (prevManifestIdResult.Count() > 0)
         {
@@ -178,10 +182,12 @@ class Downloader
             return;
         }
 
-        DepotManifest? prevManifest = await GetPrevManifest(changeId, depot.AppID, depot.DepotID);
+        DepotManifest? prevManifest = await GetPrevPulledManifest(depot.AppID, depot.DepotID);
         string? prevPath = null;
         if (prevManifest != null)
             prevPath = Config.ContentDir;
+        if (!Path.Exists(prevPath))
+            prevPath = null;
 
         await DownloadManifest(manifest, depotKey, downloadPath, prevManifest, prevPath);
     }
