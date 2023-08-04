@@ -52,5 +52,6 @@ class CDNPool
 
     public void ReturnConnection(Server server)
     {
+        Servers.Enqueue(server);
     }
 }
