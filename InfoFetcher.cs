@@ -145,8 +145,13 @@ class InfoFetcher
             if (!uint.TryParse(depot.Name, out uint depotID))
                 continue;
 
-            // TODO: Allow selecting branch...
-            var branch = "public";
+            if (depot["manifests"] == KeyValue.Invalid)
+            {
+                Console.WriteLine($"Invalid depot {depotID}: skipping (probably shared)");
+                continue;
+            }
+
+            var branch = Config.Branch;
             var manifestInfoKV = depot["manifests"][branch]["gid"];
 
             Console.WriteLine($"Got depot {depotID} {manifestInfoKV}");
