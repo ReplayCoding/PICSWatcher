@@ -1,13 +1,13 @@
 namespace GameTracker;
 
+using System.Collections.Concurrent;
+
 using SteamKit2;
 using SteamKit2.CDN;
 
-using System.Collections.Concurrent;
-
 class CDNPool
 {
-    private SteamSession Session;
+    private readonly SteamSession Session;
     private ConcurrentQueue<Server> Servers = new ConcurrentQueue<Server>();
 
     public CDNPool(SteamSession session) => (Session) = (session);

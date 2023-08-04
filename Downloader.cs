@@ -1,10 +1,10 @@
 namespace GameTracker;
 
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
-using System.Diagnostics;
 
 using Dapper;
 
