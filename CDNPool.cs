@@ -18,7 +18,9 @@ class CDNPool
     {
         while (Servers.Count < minRequiredServers)
         {
-            foreach (var server in await Session.content.GetServersForSteamPipe())
+            // According to steam-lancache-prefill:
+            // GetServersForSteamPipe() sometimes hangs and never times out.  Wrapping the call in another task, so that we can timeout the entire method.
+            foreach (var server in await Session.content.GetServersForSteamPipe().WaitAsync(TimeSpan.FromSeconds(15)))
             {
                 Servers.Enqueue(server);
             }
