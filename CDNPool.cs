@@ -10,13 +10,11 @@ class CDNPool
     private SteamSession Session;
     private ConcurrentQueue<Server> Servers = new ConcurrentQueue<Server>();
 
-    private const uint minRequiredServers = 8;
-
     public CDNPool(SteamSession session) => (Session) = (session);
 
     public async Task FetchNewServers()
     {
-        while (Servers.Count < minRequiredServers)
+        while (Servers.Count < Config.MinRequiredCDNServers)
         {
             // According to steam-lancache-prefill:
             // GetServersForSteamPipe() sometimes hangs and never times out.  Wrapping the call in another task, so that we can timeout the entire method.
@@ -26,7 +24,7 @@ class CDNPool
             }
 
             Servers = new ConcurrentQueue<Server>(Servers.DistinctBy(s => s.Host));
-            if (Servers.Count < minRequiredServers)
+            if (Servers.Count < Config.MinRequiredCDNServers)
                 await Task.Delay(1500);
         }
 

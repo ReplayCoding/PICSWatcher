@@ -14,6 +14,9 @@ class Config
     public static readonly string ProcessedDir = Path.Join(DataDir, "Processed");
     public static readonly string TempDir = Path.Join(DataDir, "Temp");
 
+    public static readonly uint MaxChunkRetries = 3;
+    public static readonly uint MinRequiredCDNServers = 5;
+
     public static void SetupDirs()
     {
         // Get rid of old temp data
