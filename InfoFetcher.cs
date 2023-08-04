@@ -78,7 +78,7 @@ class InfoFetcher
     public async static Task<DepotManifest> FetchManifest(ManifestInfo info, byte[] depotKey)
     {
         await using var db = await Database.GetConnectionAsync();
-        var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Config.Branch);
+        var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Program.Config.Branch);
         var server = SteamSession.Instance.CDNPool.TakeConnection();
         var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, server, depotKey);
         SteamSession.Instance.CDNPool.ReturnConnection(server);
@@ -151,7 +151,7 @@ class InfoFetcher
                 continue;
             }
 
-            var branch = Config.Branch;
+            var branch = Program.Config.Branch;
             var manifestInfoKV = depot["manifests"][branch]["gid"];
 
             Console.WriteLine($"Got depot {depotID} {manifestInfoKV}");

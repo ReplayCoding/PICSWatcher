@@ -66,7 +66,7 @@ class PICSChanges
             // Console.WriteLine("\t\tchangelist: {0}", appChange.ChangeNumber);
             // Console.WriteLine("\t\tneedstoken: {0}", appChange.NeedsToken);
 
-            if (appChange.ID == Config.AppToWatch)
+            if (appChange.ID == Program.Config.AppToWatch)
             {
                 needsUpdate = true;
                 changeNumber = appChange.ChangeNumber;
@@ -79,7 +79,7 @@ class PICSChanges
 
         if (needsUpdate)
         {
-            var appInfo = await InfoFetcher.FetchAppInfo(Config.AppToWatch, changeNumber);
+            var appInfo = await InfoFetcher.FetchAppInfo(Program.Config.AppToWatch, changeNumber);
             if (appInfo != null)
             {
 

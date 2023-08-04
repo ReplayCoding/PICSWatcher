@@ -39,7 +39,7 @@ class Downloader
                 // TODO: Cycle through multiple servers when fetching chunks, in case a server is down
                 uint retryCount = 0;
                 SteamKit2.CDN.DepotChunk? downloadedChunk = null;
-                while (downloadedChunk == null && retryCount < Config.MaxChunkRetries)
+                while (downloadedChunk == null && retryCount < Program.Config.MaxChunkRetries)
                 {
                     var server = SteamSession.Instance.CDNPool.TakeConnection();
                     downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
@@ -195,7 +195,7 @@ class Downloader
         DepotManifest? prevManifest = await GetPrevPulledManifest(depot.AppID, depot.DepotID);
         string? prevPath = null;
         if (prevManifest != null)
-            prevPath = Config.ContentDir;
+            prevPath = Program.Config.ContentDir;
         if (!Path.Exists(prevPath))
             prevPath = null;
 
@@ -209,7 +209,7 @@ class Downloader
         await using var db = await Database.GetConnectionAsync();
         var depots = await db.QueryAsync<InfoFetcher.ManifestInfo>(
                 "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID AND AppID = @AppID",
-                new { ChangeID = changeId, AppID = Config.AppToWatch }
+                new { ChangeID = changeId, AppID = Program.Config.AppToWatch }
         );
 
         var tempDownloadPath = Util.GetNewTempDir("download");
@@ -232,8 +232,8 @@ class Downloader
             throw;
         }
 
-        Directory.Delete(Config.ContentDir, true);
-        Directory.Move(tempDownloadPath, Config.ContentDir);
+        Directory.Delete(Program.Config.ContentDir, true);
+        Directory.Move(tempDownloadPath, Program.Config.ContentDir);
     }
 
     async static Task ProcessContent(string inDir, string outDir, string message)
@@ -289,7 +289,7 @@ class Downloader
         foreach (uint changeId in changeIdsToProcess)
         {
             await DownloadChange(changeId);
-            await ProcessContent(Config.ContentDir, Path.Join(Config.RepoDir, "Content"), $"change {changeId}");
+            // await ProcessContent(Program.Config.ContentDir, Path.Join(Program.Config.RepoDir, "Content"), $"change {changeId}");
             await LocalConfig.SetAsync("lastProcessedChangeNumber", changeId.ToString());
         }
     }

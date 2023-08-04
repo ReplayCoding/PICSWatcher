@@ -2,8 +2,10 @@
 
 using System;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 
 using SteamKit2;
+using SteamKit2.Authentication;
 using SteamKit2.CDN;
 
 class SteamSession
@@ -23,8 +25,6 @@ class SteamSession
 
     public bool IsRunning = true;
 
-    public uint? CellID { get; private set; } = null;
-
     public SteamSession()
     {
         client = new SteamClient();
@@ -42,6 +42,7 @@ class SteamSession
         CallbackManager.Subscribe<SteamClient.DisconnectedCallback>(OnDisconnected);
         CallbackManager.Subscribe<SteamUser.LoggedOnCallback>(OnLoggedOn);
         CallbackManager.Subscribe<SteamUser.LoggedOffCallback>(OnLoggedOff);
+
         PICSChanges = new PICSChanges(CallbackManager);
     }
 
@@ -51,16 +52,46 @@ class SteamSession
 
         while (IsRunning)
         {
-            CallbackManager.RunWaitCallbacks();
+            CallbackManager.RunWaitCallbacks(TimeSpan.FromSeconds(5));
         }
     }
 
 
-    private void OnConnected(SteamClient.ConnectedCallback cb)
+    private async void OnConnected(SteamClient.ConnectedCallback cb)
     {
         Console.WriteLine("Connected!");
 
-        user.LogOnAnonymous();
+        if (Program.Config.Username == "anonymous")
+        {
+            user.LogOnAnonymous();
+        }
+        else
+        {
+            string? accessToken = await LocalConfig.GetAsync<string?>("accessToken");
+            if (accessToken == null)
+            {
+                var authSession = await client.Authentication.BeginAuthSessionViaCredentialsAsync(new AuthSessionDetails
+                {
+                    Username = Program.Config.Username,
+                    Password = Program.Config.Password,
+                    IsPersistentSession = true,
+                    Authenticator = new UserConsoleAuthenticator(),
+                });
+
+                var pollResponse = await authSession.PollingWaitForResultAsync();
+
+                accessToken = pollResponse.RefreshToken;
+                await LocalConfig.SetAsync("accessToken", accessToken);
+            }
+
+            user.LogOn(new SteamUser.LogOnDetails
+            {
+                Username = Program.Config.Username,
+                AccessToken = accessToken,
+                ShouldRememberPassword = true,
+                LoginID = 0x47545446
+            });
+        }
     }
 
     private async void OnDisconnected(SteamClient.DisconnectedCallback cb)
@@ -78,10 +109,13 @@ class SteamSession
     private async void OnLoggedOn(SteamUser.LoggedOnCallback cb)
     {
         if (cb.Result != EResult.OK)
+        {
+            Console.WriteLine("Error while logging in: {0}", cb.Result);
+            // await LocalConfig.SetAsync("accessToken", null);
             return;
+        }
 
-        CellID = cb.CellID;
-        Console.WriteLine($"Cell is {CellID}.");
+        Console.WriteLine($"Cell is {cb.CellID}.");
         await CDNPool.FetchNewServers();
 
         PICSChanges.StartTick();

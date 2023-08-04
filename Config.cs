@@ -1,23 +1,64 @@
 namespace GameTracker;
 
+using System.Text.Json;
+
 class Config
 {
-    public static readonly uint AppToWatch = 232250;
-    public static readonly string Branch = "public";
+    public string Username { get; set; }
+    public string Password { get; set; }
 
-    public static readonly string DbConnectionString = "server=localhost;userid=gametracking;password=password;database=gametracking;";
+    public uint AppToWatch { get; set; }
+    public string Branch { get; set; }
 
-    public static readonly string DataDir = "Data";
-    public static readonly string RepoDir = "Repo";
+    public string DbConnectionString { get; set; }
 
-    public static readonly string ContentDir = Path.Join(DataDir, "Content");
-    public static readonly string ProcessedDir = Path.Join(DataDir, "Processed");
-    public static readonly string TempDir = Path.Join(DataDir, "Temp");
+    public string DataDir { get; set; }
+    public string RepoDir { get; set; }
 
-    public static readonly uint MaxChunkRetries = 3;
-    public static readonly uint MinRequiredCDNServers = 5;
+    public string ContentDir { get; set; }
+    public string TempDir { get; set; }
 
-    public static void SetupDirs()
+    public uint MaxChunkRetries { get; set; }
+    public uint MinRequiredCDNServers { get; set; }
+
+
+    public Config()
+    {
+        Username = "anonymous";
+        Password = "";
+
+        AppToWatch = 232250;
+        Branch = "public";
+
+        DbConnectionString = "server=localhost;userid=gametracking;password=password;database=gametracking;";
+
+        DataDir = "Data";
+        RepoDir = "Repo";
+
+        ContentDir = Path.Join(DataDir, "Content");
+        TempDir = Path.Join(DataDir, "Temp");
+
+        MaxChunkRetries = 3;
+        MinRequiredCDNServers = 5;
+    }
+
+    public static Config LoadFromFile(string path)
+    {
+        var text = File.ReadAllText(path);
+        Config? config = JsonSerializer.Deserialize<Config>(text);
+
+        if (config == null)
+            throw new Exception("Failed to decode config");
+
+        if (config.ContentDir == null)
+            config.ContentDir = Path.Join(config.DataDir, "Content");
+        if (config.TempDir == null)
+            config.TempDir = Path.Join(config.DataDir, "Temp");
+
+        return config;
+    }
+
+    public void SetupDirs()
     {
         // Get rid of old temp data
         if (Path.Exists(TempDir))
@@ -25,6 +66,5 @@ class Config
 
         Directory.CreateDirectory(TempDir);
         Directory.CreateDirectory(ContentDir);
-        Directory.CreateDirectory(ProcessedDir);
     }
 }

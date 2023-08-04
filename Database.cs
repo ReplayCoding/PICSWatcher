@@ -6,7 +6,7 @@ class Database
 {
     public static async Task<MySqlConnection> GetConnectionAsync()
     {
-        var connection = new MySqlConnection(Config.DbConnectionString);
+        var connection = new MySqlConnection(Program.Config.DbConnectionString);
         await connection.OpenAsync();
 
         return connection;
@@ -14,6 +14,6 @@ class Database
 
     public static MySqlConnection GetConnection()
     {
-        return new MySqlConnection(Config.DbConnectionString);
+        return new MySqlConnection(Program.Config.DbConnectionString);
     }
 }
