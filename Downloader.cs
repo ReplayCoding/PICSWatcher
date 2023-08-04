@@ -37,7 +37,10 @@ class Downloader
             {
                 // TODO: Reuse previous version *chunks*
                 // TODO: Cycle through multiple servers when fetching chunks, in case a server is down
-                var downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, SteamSession.Instance.cdnServers.First(), depotKey);
+                var server = SteamSession.Instance.CDNPool.TakeConnection();
+                var downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
+                SteamSession.Instance.CDNPool.ReturnConnection(server);
+
                 if (downloadedChunk == null)
                     throw new InvalidDataException($"Failed to download chunk {chunk.ChunkID} from manifest {manifest.ManifestGID}");
 

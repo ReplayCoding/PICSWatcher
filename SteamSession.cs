@@ -16,12 +16,14 @@ class SteamSession
     public readonly SteamContent content;
 
     public readonly SteamKit2.CDN.Client cdnClient;
-    public IReadOnlyCollection<Server> cdnServers;
+    public readonly CDNPool CDNPool;
 
     private readonly CallbackManager CallbackManager;
     private readonly PICSChanges PICSChanges;
 
     public bool IsRunning = true;
+
+    public uint? CellID { get; private set; } = null;
 
     public SteamSession()
     {
@@ -32,7 +34,7 @@ class SteamSession
         content = client.GetHandler<SteamContent>();
 
         cdnClient = new Client(client);
-        cdnServers = new List<Server>();
+        CDNPool = new CDNPool(this);
 
         CallbackManager = new CallbackManager(client);
 
@@ -78,21 +80,15 @@ class SteamSession
         if (cb.Result != EResult.OK)
             return;
 
-        cdnServers = await content.GetServersForSteamPipe();
-
-        // foreach (var server in cdnServers)
-        // {
-        //     Console.WriteLine("Server: {0}", server.Host);
-        //     Console.WriteLine("\tVHost: {0}", server.VHost);
-        //     Console.WriteLine("\tPort: {0}", server.Port);
-        //     Console.WriteLine("\tProtocol: {0}", server.Protocol);
-        // }
-
-        Console.WriteLine("Logged On! Server time is {0}. Got {1} CDN servers.", cb.ServerTime, cdnServers.Count);
+        CellID = cb.CellID;
+        Console.WriteLine($"Cell is {CellID}.");
+        await CDNPool.FetchNewServers();
 
         PICSChanges.StartTick();
         // Always force an update check on login
         _ = Task.Run(Downloader.RunUpdates);
+
+        Console.WriteLine("Logged On! Server time is {0}", cb.ServerTime);
     }
 
     private void OnLoggedOff(SteamUser.LoggedOffCallback cb)

@@ -79,7 +79,9 @@ class InfoFetcher
     {
         await using var db = await Database.GetConnectionAsync();
         var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Config.Branch);
-        var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, SteamSession.Instance.cdnServers.First(), depotKey);
+        var server = SteamSession.Instance.CDNPool.TakeConnection();
+        var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, server, depotKey);
+        SteamSession.Instance.CDNPool.ReturnConnection(server);
 
         return manifestContent;
     }
