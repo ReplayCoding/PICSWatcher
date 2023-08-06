@@ -36,20 +36,27 @@ class Downloader
             foreach (var chunk in file.Chunks)
             {
                 // TODO: Reuse previous version *chunks*
-                // TODO: Cycle through multiple servers when fetching chunks, in case a server is down
                 uint retryCount = 0;
                 SteamKit2.CDN.DepotChunk? downloadedChunk = null;
                 while (downloadedChunk == null && retryCount < Program.Config.MaxChunkRetries)
                 {
                     var server = SteamSession.Instance.CDNPool.TakeConnection();
-                    downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
+                    try
+                    {
+                        downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        Console.WriteLine("Timed out while downloading chunk, retrying...");
+                        await Task.Delay(1000);
+                    }
                     SteamSession.Instance.CDNPool.ReturnConnection(server);
 
                     retryCount++;
                 }
 
                 if (downloadedChunk == null)
-                    throw new InvalidDataException($"Failed to download chunk {chunk.ChunkID} from manifest {manifest.ManifestGID}");
+                    throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkID)} from manifest {manifest.ManifestGID}");
 
                 of.Seek((long)chunk.Offset, SeekOrigin.Begin);
                 of.Write(downloadedChunk.Data, 0, downloadedChunk.Data.Length);
