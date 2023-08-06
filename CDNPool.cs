@@ -20,8 +20,13 @@ class CDNPool
             // GetServersForSteamPipe() sometimes hangs and never times out.  Wrapping the call in another task, so that we can timeout the entire method.
             foreach (var server in await Session.content.GetServersForSteamPipe().WaitAsync(TimeSpan.FromSeconds(15)))
             {
+                // Ignore servers that don't have our app
+                if (server.AllowedAppIds.Count() < 0 && !server.AllowedAppIds.Contains(Program.Config.AppToWatch))
+                    continue;
+
                 Servers.Enqueue(server);
             }
+
 
             Servers = new ConcurrentQueue<Server>(Servers.DistinctBy(s => s.Host));
             if (Servers.Count < Program.Config.MinRequiredCDNServers)
