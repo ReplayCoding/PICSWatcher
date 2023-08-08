@@ -14,6 +14,7 @@ class Program
         // Setup content & temporary dirs
         Config.SetupDirs();
 
+        // TEMP HACK FOR TESTING
         LocalConfig.Set("lastProcessedChangeNumber", "0");
 
         Console.WriteLine("Connecting...");

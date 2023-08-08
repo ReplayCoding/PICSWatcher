@@ -13,6 +13,13 @@ using SteamKit2;
 class Downloader
 {
     private static readonly SemaphoreSlim DownloadSem = new SemaphoreSlim(1, 1);
+    class BuildInfo
+    {
+        public readonly uint ChangeID;
+        public readonly string Branch;
+        public readonly uint BuildID;
+        public readonly DateTimeOffset TimeUpdated;
+    };
 
     // TODO: Hash the chunks instead? Although, this is probably robust enough.
     static bool VerifyFile(string fileName, DepotManifest.FileData fileData)
@@ -282,6 +289,17 @@ class Downloader
             throw new Exception($"Got exit code {gitProc.ExitCode} while running git commit");
     }
 
+    async static Task<string> GetMessage(uint changeId)
+    {
+        await using var db = await Database.GetConnectionAsync();
+        BuildInfo? buildInfo = await db.QueryFirstAsync<BuildInfo?>("SELECT `ChangeID`, `Branch`, `BuildID`, `TimeUpdated` FROM `BuildInfo` WHERE `ChangeID` = @ChangeID", new { ChangeID = changeId });
+
+        if (buildInfo == null)
+            throw new Exception($"Couldn't get build info for change {changeId}");
+
+        return $"build {buildInfo.BuildID} on {buildInfo.TimeUpdated}";
+    }
+
     async static Task CheckUpdates()
     {
         var lastProcessedChangeNumber = await LocalConfig.GetAsync<uint>("lastProcessedChangeNumber");
@@ -296,7 +314,9 @@ class Downloader
         foreach (uint changeId in changeIdsToProcess)
         {
             await DownloadChange(changeId);
-            // await ProcessContent(Program.Config.ContentDir, Path.Join(Program.Config.RepoDir, "Content"), $"change {changeId}");
+
+            var message = await GetMessage(changeId);
+            await ProcessContent(Program.Config.ContentDir, Path.Join(Program.Config.RepoDir, "Content"), message);
             await LocalConfig.SetAsync("lastProcessedChangeNumber", changeId.ToString());
         }
     }

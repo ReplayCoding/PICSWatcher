@@ -5,7 +5,6 @@ using System;
 using Dapper;
 
 using SteamKit2;
-using SteamKit2.CDN;
 
 class InfoFetcher
 {
@@ -22,9 +21,14 @@ class InfoFetcher
     {
         public readonly uint AppId;
         public readonly uint ChangeId;
+
+        public readonly DateTimeOffset TimeUpdated;
+        public readonly uint BuildID;
         public readonly List<DepotInfo> Depots;
 
-        public AppInfo(uint appId, uint changeId, List<DepotInfo> depots) => (AppId, ChangeId, Depots) = (appId, changeId, depots);
+        public AppInfo(uint appId, uint changeId, List<DepotInfo> depots, DateTimeOffset timeUpdated, uint buildId) =>
+            (AppId, ChangeId, Depots, TimeUpdated, BuildID) =
+                (appId, changeId, depots, timeUpdated, buildId);
     };
 
     public class ManifestInfo
@@ -40,14 +44,6 @@ class InfoFetcher
 
         public ManifestInfo(uint appId, uint depotId, ulong manifestId) => (AppID, DepotID, ManifestID) = (appId, depotId, manifestId);
     };
-
-    // unorganized! (appid, depotid)
-    static readonly Dictionary<KeyValuePair<uint, uint>, byte[]> DepotKeys;
-
-    static InfoFetcher()
-    {
-        DepotKeys = new Dictionary<KeyValuePair<uint, uint>, byte[]>();
-    }
 
     public async static Task<byte[]?> GetDepotKey(uint appId, uint depotId, bool bypassCache = false)
     {
@@ -147,7 +143,7 @@ class InfoFetcher
 
             if (depot["manifests"] == KeyValue.Invalid)
             {
-                Console.WriteLine($"Invalid depot {depotID}: skipping (probably shared)");
+                Console.WriteLine($"Invalid depot {depotID}: skipping (shared or encrypted)");
                 continue;
             }
 
@@ -158,6 +154,13 @@ class InfoFetcher
             depots.Add(new DepotInfo(depotID, branch, manifestInfoKV.AsUnsignedLong()));
         }
 
-        return new AppInfo(info["appid"].AsUnsignedInteger(), changeNumber, depots);
+        var branchInfo = depotsKvs["branches"][Program.Config.Branch];
+        if (branchInfo == KeyValue.Invalid)
+            throw new Exception("Couldn't get branch info (buildid, timeupdated).");
+
+        var timeUpdated = branchInfo["timeUpdated"].AsUnsignedInteger();
+        var buildId = branchInfo["buildid"].AsUnsignedInteger();
+
+        return new AppInfo(info["appid"].AsUnsignedInteger(), changeNumber, depots, DateTimeOffset.FromUnixTimeSeconds(timeUpdated), buildId);
     }
 }

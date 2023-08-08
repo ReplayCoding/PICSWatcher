@@ -21,6 +21,10 @@ class PICSChanges
                 LastChangeNumber = db.ExecuteScalar<uint>("SELECT `ChangeID` FROM `DepotVersions` ORDER BY `ChangeID` DESC LIMIT 1");
         }
 
+        // Apparently we don't get forced full updates without this? SteamDB also does this.
+        if (LastChangeNumber == 0)
+            LastChangeNumber = 1;
+
         Console.WriteLine($"Previous changelist was {LastChangeNumber}");
     }
 
@@ -98,6 +102,19 @@ class PICSChanges
                         ManifestID = depot.ManifestId,
                     }, transaction);
                 }
+
+                await db.ExecuteAsync(@"
+                                INSERT INTO `BuildInfo`
+                                    (`ChangeID`, `Branch`, `BuildID`, `TimeUpdated`)
+                                    VALUES (@ChangeID, @Branch, @BuildID, @TimeUpdated)
+                                    ON DUPLICATE KEY UPDATE `ChangeID`=`ChangeID`;",
+                new
+                {
+                    ChangeID = appInfo.ChangeId,
+                    Branch = Program.Config.Branch,
+                    BuildID = appInfo.BuildID,
+                    TimeUpdated = appInfo.TimeUpdated
+                }, transaction);
 
             }
             else
