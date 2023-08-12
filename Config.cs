@@ -21,6 +21,9 @@ class Config
     public uint MaxChunkRetries { get; set; }
     public uint MinRequiredCDNServers { get; set; }
 
+    public string Processor { get; set; }
+    public string ProcessorArgs { get; set; }
+    public string ProcessorWorkingDir { get; set; }
 
     public Config()
     {

@@ -250,14 +250,15 @@ class Downloader
         Directory.Move(tempDownloadPath, Program.Config.ContentDir);
     }
 
+    // TODO: I really don't like how this works currently, maybe rewrite
     async static Task ProcessContent(string inDir, string outDir, string message)
     {
         var tempOut = Util.GetNewTempDir("processed");
 
         var p = new Process();
-        p.StartInfo.WorkingDirectory = "/home/user/Projects/tf2_stuff/GameTracking-FINAL/DataMiner";
-        p.StartInfo.FileName = "/home/user/Projects/tf2_stuff/GameTracking-FINAL/DataMiner/__main__.py";
-        p.StartInfo.Arguments = $"--config=/home/user/Projects/tf2_stuff/GameTracking-FINAL/DataMiner/config.yaml \"{Path.GetFullPath(inDir)}\" \"{Path.GetFullPath(tempOut)}\"";
+        p.StartInfo.WorkingDirectory = Program.Config.ProcessorWorkingDir;
+        p.StartInfo.FileName = Program.Config.Processor;
+        p.StartInfo.Arguments = $"{Program.Config.ProcessorArgs} \"{Path.GetFullPath(inDir)}\" \"{Path.GetFullPath(tempOut)}\"";
         p.Start();
         await p.WaitForExitAsync();
 
