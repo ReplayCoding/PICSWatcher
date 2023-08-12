@@ -194,10 +194,7 @@ class Downloader
     {
         var depotKey = await InfoFetcher.GetDepotKey(depot.AppID, depot.DepotID);
         if (depotKey == null)
-        {
-            Console.WriteLine("Couldn't get depot key for depot {0}, skipping", depot.DepotID);
-            return;
-        }
+            throw new Exception($"Couldn't get depot key for depot {depot.DepotID}");
 
         var manifest = await InfoFetcher.FetchManifest(depot, depotKey);
         if (manifest.Files == null || manifest.FilenamesEncrypted)
