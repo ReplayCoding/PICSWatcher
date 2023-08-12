@@ -215,8 +215,6 @@ class Downloader
 
     async static Task DownloadChange(uint changeId)
     {
-        Console.WriteLine("ChangeID: {0}", changeId);
-
         await using var db = await Database.GetConnectionAsync();
         var depots = await db.QueryAsync<InfoFetcher.ManifestInfo>(
                 "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID AND AppID = @AppID",
@@ -310,6 +308,8 @@ class Downloader
 
         foreach (uint changeId in changeIdsToProcess)
         {
+            Console.WriteLine("Downloading ChangeID {0}...", changeId);
+
             await DownloadChange(changeId);
 
             var message = await GetMessage(changeId);
