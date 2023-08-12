@@ -232,8 +232,7 @@ class Downloader
         {
             foreach (var depot in depots)
             {
-                // XXX: For testing
-                if (232252 != depot.DepotID)
+                if (Program.Config.DepotsToDownload.Contains(depot.DepotID))
                     continue;
 
                 await DownloadDepot(depot, tempDownloadPath, changeId);

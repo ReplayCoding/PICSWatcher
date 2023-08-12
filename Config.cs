@@ -10,6 +10,8 @@ class Config
     public uint AppToWatch { get; set; }
     public string Branch { get; set; }
 
+    public IEnumerable<uint> DepotsToDownload { get; set; }
+
     public string DbConnectionString { get; set; }
 
     public string DataDir { get; set; }
