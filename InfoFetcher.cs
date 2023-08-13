@@ -22,11 +22,11 @@ class InfoFetcher
         public readonly uint AppId;
         public readonly uint ChangeId;
 
-        public readonly DateTimeOffset TimeUpdated;
+        public readonly long TimeUpdated;
         public readonly uint BuildID;
         public readonly List<DepotInfo> Depots;
 
-        public AppInfo(uint appId, uint changeId, List<DepotInfo> depots, DateTimeOffset timeUpdated, uint buildId) =>
+        public AppInfo(uint appId, uint changeId, List<DepotInfo> depots, long timeUpdated, uint buildId) =>
             (AppId, ChangeId, Depots, TimeUpdated, BuildID) =
                 (appId, changeId, depots, timeUpdated, buildId);
     };
@@ -158,9 +158,9 @@ class InfoFetcher
         if (branchInfo == KeyValue.Invalid)
             throw new Exception("Couldn't get branch info (buildid, timeupdated).");
 
-        var timeUpdated = branchInfo["timeUpdated"].AsUnsignedInteger();
+        var timeUpdated = branchInfo["timeUpdated"].AsLong();
         var buildId = branchInfo["buildid"].AsUnsignedInteger();
 
-        return new AppInfo(info["appid"].AsUnsignedInteger(), changeNumber, depots, DateTimeOffset.FromUnixTimeSeconds(timeUpdated), buildId);
+        return new AppInfo(info["appid"].AsUnsignedInteger(), changeNumber, depots, timeUpdated, buildId);
     }
 }

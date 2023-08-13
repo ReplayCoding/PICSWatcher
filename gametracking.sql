@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS `BuildInfo` (
   `ChangeID` INT(10) UNSIGNED NOT NULL,
   `Branch` varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   `BuildID` INT(10) UNSIGNED NOT NULL,
-  `TimeUpdated` DATETIME NOT NULL,
+  `TimeUpdated` BIGINT(10) NOT NULL,
 
   UNIQUE (`ChangeID`)
 );

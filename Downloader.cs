@@ -18,9 +18,16 @@ class Downloader
         public readonly uint ChangeID;
         public readonly string Branch;
         public readonly uint BuildID;
-        public readonly DateTimeOffset TimeUpdated;
-    };
+        public readonly long TimeUpdated;
 
+        public BuildInfo(uint changeID, string branch, uint buildID, long timeUpdated)
+        {
+            ChangeID = changeID;
+            Branch = branch;
+            BuildID = buildID;
+            TimeUpdated = timeUpdated;
+        }
+    }
     // TODO: Hash the chunks instead? Although, this is probably robust enough.
     static bool VerifyFile(string fileName, DepotManifest.FileData fileData)
     {
@@ -292,7 +299,8 @@ class Downloader
         if (buildInfo == null)
             throw new Exception($"Couldn't get build info for change {changeId}");
 
-        return $"build {buildInfo.BuildID} on {buildInfo.TimeUpdated}";
+        var timeUpdated = DateTimeOffset.FromUnixTimeSeconds(buildInfo.TimeUpdated);
+        return $"build {buildInfo.BuildID} on {timeUpdated.ToString("r")}";
     }
 
     async static Task CheckUpdates()
