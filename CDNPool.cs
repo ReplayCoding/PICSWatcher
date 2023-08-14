@@ -33,13 +33,14 @@ class CDNPool
                 await Task.Delay(1500);
         }
 
-        foreach (var server in Servers)
-        {
-            Console.WriteLine("Server: {0}", server.Host);
-            Console.WriteLine("\tVHost: {0}", server.VHost);
-            Console.WriteLine("\tPort: {0}", server.Port);
-            Console.WriteLine("\tProtocol: {0}", server.Protocol);
-        }
+        // foreach (var server in Servers)
+        // {
+        //     Console.WriteLine("Server: {0}", server.Host);
+        //     Console.WriteLine("\tVHost: {0}", server.VHost);
+        //     Console.WriteLine("\tPort: {0}", server.Port);
+        //     Console.WriteLine("\tProtocol: {0}", server.Protocol);
+        // }
+        Console.WriteLine($"Got {Servers.Count} CDN servers");
     }
 
     public Server TakeConnection()
