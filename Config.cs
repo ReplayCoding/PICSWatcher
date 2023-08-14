@@ -47,10 +47,9 @@ class Config
         MinRequiredCDNServers = 5;
     }
 
-    public static Config LoadFromFile(string path)
+    public static Config LoadFromFile(FileStream file)
     {
-        var text = File.ReadAllText(path);
-        Config? config = JsonSerializer.Deserialize<Config>(text);
+        Config? config = JsonSerializer.Deserialize<Config>(file);
 
         if (config == null)
             throw new Exception("Failed to decode config");

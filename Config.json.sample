@@ -1,0 +1,19 @@
+{
+  "Username": "anonymous",
+  "Password": "",
+
+  "AppToWatch": 232250,
+  "DepotsToDownload": [232256],
+  "Branch": "public",
+
+  "DbConnectionString": "server=localhost;userid=gametracking;password=password;database=gametracking;",
+  "DataDir": "Data",
+  "RepoDir": "Repo",
+
+  "MaxChunkRetries": 3,
+  "MinRequiredCDNServers": 5,
+
+  "Processor": "<replace me>",
+  "ProcessorArgs": "",
+  "ProcessorWorkingDir": "<replace me>"
+}
