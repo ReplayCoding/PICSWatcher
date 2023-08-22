@@ -21,6 +21,13 @@ class LocalConfig
                     });
     }
 
+    public static async Task DeleteAsync(string key)
+    {
+        // Console.WriteLine($"LocalConfig deleting `{key}`");
+        await using var connection = await Database.GetConnectionAsync();
+        await connection.ExecuteAsync(@"DELETE FROM `LocalConfig` WHERE `Key` = @Key", new { Key = key, });
+    }
+
     public static void Set(string key, string value)
     {
         // Console.WriteLine($"LocalConfig setting `{key}` to `{value}`");

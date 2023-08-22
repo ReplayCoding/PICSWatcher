@@ -111,7 +111,7 @@ class SteamSession
         if (cb.Result != EResult.OK)
         {
             Console.WriteLine("Error while logging in: {0}", cb.Result);
-            // await LocalConfig.SetAsync("accessToken", null);
+            await LocalConfig.DeleteAsync("accessToken");
             return;
         }
 
