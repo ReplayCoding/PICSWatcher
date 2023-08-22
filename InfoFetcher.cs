@@ -163,4 +163,28 @@ class InfoFetcher
 
         return new AppInfo(info["appid"].AsUnsignedInteger(), changeNumber, depots, timeUpdated, buildId);
     }
+
+    public async static Task<SteamKit2.CDN.DepotChunk?> DownloadChunk(DepotManifest manifest, DepotManifest.ChunkData chunk, byte[] depotKey)
+    {
+        uint retryCount = 0;
+        SteamKit2.CDN.DepotChunk? downloadedChunk = null;
+        while (downloadedChunk == null && retryCount < Program.Config.MaxChunkRetries)
+        {
+            var server = SteamSession.Instance.CDNPool.TakeConnection();
+            try
+            {
+                downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
+            }
+            catch (TaskCanceledException)
+            {
+                Console.WriteLine("Timed out while downloading chunk, retrying...");
+                await Task.Delay(1000);
+            }
+            SteamSession.Instance.CDNPool.ReturnConnection(server);
+
+            retryCount++;
+        }
+
+        return downloadedChunk;
+    }
 }

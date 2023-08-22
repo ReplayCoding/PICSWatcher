@@ -455,3 +455,6 @@ $RECYCLE.BIN/
 
 # App specific files
 /Data
+
+# Nix
+.envrc

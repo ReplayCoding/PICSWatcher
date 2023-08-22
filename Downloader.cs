@@ -40,48 +40,73 @@ class Downloader
         }
     }
 
-    async static Task DownloadFile(string outFile, DepotManifest manifest, DepotManifest.FileData file, byte[] depotKey)
+    async static Task DownloadFile(string outFile, DepotManifest manifest, DepotManifest.FileData manifestFile, byte[] depotKey, DepotManifest.FileData? prevManifestFile, string? prevDir = null)
     {
+        System.IO.FileStream? prevFile = null;
+        try
+        {
+            prevFile = File.OpenRead(Path.Join(prevDir, manifestFile.FileName));
+        }
+        catch
+        {
+            // Don't care if we don't find a previous file, just ignore it and download
+        }
+
         using (var of = File.Create(outFile))
         {
-            of.SetLength((long)file.TotalSize);
+            of.SetLength((long)manifestFile.TotalSize);
 
             // TODO: Download multiple chunks at the same time
-            foreach (var chunk in file.Chunks)
+            foreach (var chunk in manifestFile.Chunks)
             {
-                // TODO: Reuse previous version *chunks*
-                uint retryCount = 0;
-                SteamKit2.CDN.DepotChunk? downloadedChunk = null;
-                while (downloadedChunk == null && retryCount < Program.Config.MaxChunkRetries)
+                byte[]? downloadedChunk = null;
+                DepotManifest.ChunkData? prevChunk = null;
+                if (prevManifestFile != null)
+                    prevChunk = prevManifestFile.Chunks.FirstOrDefault(c => c.ChunkID.SequenceEqual(chunk.ChunkID));
+                if (prevChunk != null && prevFile != null)
                 {
-                    var server = SteamSession.Instance.CDNPool.TakeConnection();
                     try
                     {
-                        downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
-                    }
-                    catch (TaskCanceledException)
-                    {
-                        Console.WriteLine("Timed out while downloading chunk, retrying...");
-                        await Task.Delay(1000);
-                    }
-                    SteamSession.Instance.CDNPool.ReturnConnection(server);
+                        var tmp = new byte[prevChunk.UncompressedLength];
 
-                    retryCount++;
+                        prevFile.Seek((long)prevChunk.Offset, SeekOrigin.Begin);
+                        await prevFile.ReadAsync(tmp, 0, tmp.Length);
+
+                        var adler = Util.AdlerHash(tmp);
+                        if (adler.SequenceEqual(prevChunk.Checksum))
+                        {
+                            // We found a chunk to reuse!
+                            downloadedChunk = tmp;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Couldn't reuse chunk for file {0} because hash doesn't match", manifestFile.FileName);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore, will download
+                    }
+                }
+
+                // Couldn't reuse chunk, download it
+                if (downloadedChunk == null)
+                {
+                    var downloadedChunkInfo = await InfoFetcher.DownloadChunk(manifest, chunk, depotKey);
+                    if (downloadedChunkInfo != null)
+                        downloadedChunk = downloadedChunkInfo.Data;
                 }
 
                 if (downloadedChunk == null)
                     throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkID)} from manifest {manifest.ManifestGID}");
 
                 of.Seek((long)chunk.Offset, SeekOrigin.Begin);
-                of.Write(downloadedChunk.Data, 0, downloadedChunk.Data.Length);
-
-                // Console.WriteLine("\tchunk {0}", BitConverter.ToString(chunk.ChunkID));
-                // Console.WriteLine("\t\tchecksum {0}", BitConverter.ToString(chunk.Checksum));
-                // Console.WriteLine("\t\toffset {0}", chunk.Offset);
-                // Console.WriteLine("\t\tlength compressed {0}", chunk.CompressedLength);
-                // Console.WriteLine("\t\tlength uncompressed {0}", chunk.UncompressedLength);
+                of.Write(downloadedChunk, 0, downloadedChunk.Length);
             }
         };
+
+        if (prevFile != null)
+            await prevFile.DisposeAsync();
     }
 
     async static Task DownloadManifest(DepotManifest manifest, byte[] depotKey, string outputDir, DepotManifest? prevManifest = null, string? prevDir = null)
@@ -122,36 +147,17 @@ class Downloader
                 continue;
             };
 
-            // Console.WriteLine("{0} | size: {1} | flags: {2}", file.FileName, file.TotalSize, file.Flags);
-            bool canReuse = false;
+            DepotManifest.FileData? prevFile = null;
             if (prevFiles != null)
             {
-                DepotManifest.FileData? prevFile = null;
                 prevFiles.TryGetValue(file.FileName, out prevFile);
-
-                if (prevFile != null && prevFile.FileHash.SequenceEqual(file.FileHash))
-                {
-                    // Console.WriteLine("We could reuse {0}", prevFile.FileName);
-                    canReuse = true;
-                }
             }
 
-            if (canReuse)
-            {
-                // Console.WriteLine("Copying to {0} from {1}", Path.Join(outputDir, file.FileName), Path.Join(prevDir, file.FileName));
-                File.Copy(Path.Join(prevDir, file.FileName), outFile);
-            }
-            else
-            {
-                // Console.WriteLine("Downloading {0}", outFile);
-                await DownloadFile(outFile, manifest, file, depotKey);
-                // Console.WriteLine("Downloaded {0}", outFile);
-            }
-
+            await DownloadFile(outFile, manifest, file, depotKey, prevFile, prevDir);
             if (!VerifyFile(outFile, file))
             {
                 Console.WriteLine($"File {file.FileName} failed to verify, retrying download");
-                await DownloadFile(outFile, manifest, file, depotKey);
+                await DownloadFile(outFile, manifest, file, depotKey, null);
                 if (!VerifyFile(outFile, file))
                 {
                     throw new InvalidDataException($"File {file.FileName} failed to verify a second time, something is very wrong!");
