@@ -55,7 +55,6 @@ class InfoFetcher
             if (decryptionKeys.Count() > 0)
             {
                 var key = decryptionKeys.First();
-                // Console.WriteLine("Cached depot key is {0}", decryptionKeys.First());
                 return Convert.FromHexString(key);
             };
         }
@@ -133,7 +132,6 @@ class InfoFetcher
     private static AppInfo GetAppInfoFromKV(uint changeNumber, KeyValue info)
     {
         var depotsKvs = info["depots"];
-        // depotsKvs.SaveToFile("depots", false);
         var depots = new List<DepotInfo>();
 
         foreach (KeyValue depot in depotsKvs.Children)

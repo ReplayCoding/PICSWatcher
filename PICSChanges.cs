@@ -54,7 +54,6 @@ class PICSChanges
         bool needsUpdate = false;
         uint? changeNumber = null;
 
-        // Console.WriteLine($"PICS Update {cb.LastChangeNumber} -> {cb.CurrentChangeNumber}");
         if (cb.CurrentChangeNumber == LastChangeNumber)
             return;
 
@@ -66,10 +65,6 @@ class PICSChanges
 
         foreach (var appChange in cb.AppChanges.Values)
         {
-            // Console.WriteLine("\tApp {0}", appChange.ID);
-            // Console.WriteLine("\t\tchangelist: {0}", appChange.ChangeNumber);
-            // Console.WriteLine("\t\tneedstoken: {0}", appChange.NeedsToken);
-
             if (appChange.ID == Program.Config.AppToWatch)
             {
                 needsUpdate = true;

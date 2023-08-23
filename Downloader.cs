@@ -111,8 +111,6 @@ class Downloader
 
     async static Task DownloadManifest(DepotManifest manifest, byte[] depotKey, string outputDir, DepotManifest? prevManifest = null, string? prevDir = null)
     {
-        // Console.WriteLine($"Downloading manifest {manifest.ManifestGID}");
-
         Dictionary<string, DepotManifest.FileData>? prevFiles = null;
         if (prevManifest != null)
         {
