@@ -61,6 +61,18 @@ class PICSChanges
         };
     }
 
+    private async Task<uint?> GetPrevChangeNumber(uint currentChangeNumber, IDbConnection db, IDbTransaction transaction)
+    {
+        var results = await db.QueryAsync<uint>(@"SELECT `ChangeID` FROM `BuildInfo` WHERE ChangeID < @currentChange ORDER BY `ChangeID` DESC LIMIT 1", new { currentChange = currentChangeNumber }, transaction);
+
+        if (results.Count() == 0)
+        {
+            return null;
+        }
+
+        return results.First();
+    }
+
     private async Task AddChangesToDB(InfoFetcher.AppInfo appInfo, IDbConnection db, IDbTransaction transaction)
     {
         foreach (var depot in appInfo.Depots)
@@ -129,7 +141,7 @@ class PICSChanges
     public async void OnPICSChanges(SteamApps.PICSChangesCallback cb)
     {
         bool needsUpdate = false;
-        uint? changeNumber = null;
+        uint changeNumber = 0;
 
         if (cb.CurrentChangeNumber == LastChangeNumber)
             return;
@@ -158,11 +170,21 @@ class PICSChanges
             var appInfo = await InfoFetcher.FetchAppInfo(Program.Config.AppToWatch, changeNumber);
             if (appInfo != null)
             {
-                needsUpdate = await ChangeDiffersFromPrev(appInfo, LastChangeNumber, db, transaction);
+                uint? prevChangeNumber = await GetPrevChangeNumber(appInfo.ChangeId, db, transaction);
+                if (prevChangeNumber != null)
+                {
+                    // casts :(
+                    needsUpdate = await ChangeDiffersFromPrev(appInfo, (uint)prevChangeNumber, db, transaction);
+                }
+
                 if (needsUpdate)
+                {
                     await AddChangesToDB(appInfo, db, transaction);
+                }
                 else
+                {
                     Console.WriteLine("Ignoring empty change: {0}", appInfo.ChangeId);
+                }
             }
             else
             {
