@@ -238,7 +238,7 @@ class Downloader
         {
             foreach (var depot in depots)
             {
-                if (!Program.Config.DepotsToDownload.Contains(depot.DepotID))
+                if (Program.Config.DepotsToDownload.Count() != 0 && !Program.Config.DepotsToDownload.Contains(depot.DepotID))
                     continue;
 
                 await DownloadDepot(depot, tempDownloadPath, changeId);
