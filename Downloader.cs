@@ -10,6 +10,8 @@ using Dapper;
 
 using SteamKit2;
 
+using LibGit2Sharp;
+
 class Downloader
 {
     private static readonly SemaphoreSlim DownloadSem = new SemaphoreSlim(1, 1);
@@ -224,15 +226,13 @@ class Downloader
         await DownloadManifest(manifest, depotKey, downloadPath, prevManifest, prevPath);
     }
 
-    async static Task DownloadChange(uint changeId)
+    async static Task DownloadChange(uint changeId, string downloadPath)
     {
         await using var db = await Database.GetConnectionAsync();
         var depots = await db.QueryAsync<InfoFetcher.ManifestInfo>(
                 "select `AppID`, `DepotID`, `ManifestID` from DepotVersions WHERE ChangeID = @ChangeID AND AppID = @AppID",
                 new { ChangeID = changeId, AppID = Program.Config.AppToWatch }
         );
-
-        var tempDownloadPath = Util.GetNewTempDir("download");
 
         try
         {
@@ -241,61 +241,33 @@ class Downloader
                 if (Program.Config.DepotsToDownload.Count() != 0 && !Program.Config.DepotsToDownload.Contains(depot.DepotID))
                     continue;
 
-                await DownloadDepot(depot, tempDownloadPath, changeId);
+                await DownloadDepot(depot, downloadPath, changeId);
                 Console.WriteLine("\t{0}", depot);
             }
         }
         catch
         {
-            Directory.Delete(tempDownloadPath, true);
+            Directory.Delete(downloadPath, true);
             throw;
         }
 
-        Directory.Delete(Program.Config.ContentDir, true);
-        Directory.Move(tempDownloadPath, Program.Config.ContentDir);
     }
 
-    // TODO: I really don't like how this works currently, maybe rewrite
-    async static Task ProcessContent(string inDir, string outDir, string message)
+    async static Task ProcessContent(string inDir, string outDir)
     {
-        var tempOut = Util.GetNewTempDir("processed");
 
         var p = new Process();
         p.StartInfo.WorkingDirectory = Program.Config.ProcessorWorkingDir;
         p.StartInfo.FileName = Program.Config.Processor;
-        p.StartInfo.Arguments = $"{Program.Config.ProcessorArgs} \"{Path.GetFullPath(inDir)}\" \"{Path.GetFullPath(tempOut)}\"";
+        p.StartInfo.Arguments = $"{Program.Config.ProcessorArgs} \"{Path.GetFullPath(inDir)}\" \"{Path.GetFullPath(outDir)}\"";
         p.Start();
         await p.WaitForExitAsync();
 
         if (p.ExitCode != 0)
             throw new Exception($"Got exit code {p.ExitCode} while running processer");
-
-        if (Directory.Exists(outDir))
-            Directory.Delete(outDir, true);
-        Directory.Move(tempOut, outDir);
-
-        var gitProc = new Process();
-        gitProc.StartInfo.WorkingDirectory = outDir;
-        gitProc.StartInfo.FileName = "git";
-        gitProc.StartInfo.Arguments = "add -A";
-        gitProc.Start();
-        await gitProc.WaitForExitAsync();
-
-        if (gitProc.ExitCode != 0)
-            throw new Exception($"Got exit code {gitProc.ExitCode} while running git add");
-
-        gitProc = new Process();
-        gitProc.StartInfo.WorkingDirectory = outDir;
-        gitProc.StartInfo.FileName = "git";
-        gitProc.StartInfo.Arguments = $"commit --allow-empty -a -m \"{message}\"";
-        gitProc.Start();
-        await gitProc.WaitForExitAsync();
-
-        if (gitProc.ExitCode != 0)
-            throw new Exception($"Got exit code {gitProc.ExitCode} while running git commit");
     }
 
-    async static Task<string> GetMessage(uint changeId)
+    async static Task<string> GetCommitMessage(uint changeId)
     {
         await using var db = await Database.GetConnectionAsync();
         BuildInfo? buildInfo = await db.QueryFirstAsync<BuildInfo?>("SELECT `ChangeID`, `Branch`, `BuildID`, `TimeUpdated` FROM `BuildInfo` WHERE `ChangeID` = @ChangeID", new { ChangeID = changeId });
@@ -305,6 +277,26 @@ class Downloader
 
         var timeUpdated = DateTimeOffset.FromUnixTimeSeconds(buildInfo.TimeUpdated);
         return $"build {buildInfo.BuildID} on {timeUpdated.ToString("r")}";
+    }
+
+    async static Task CommitToRepo(uint changeId)
+    {
+        using (var repo = new Repository(Program.Config.RepoDir))
+        {
+            Commands.Stage(repo, "*");
+
+            Signature author = new Signature("gametracking", "gametracking@example.com", DateTime.Now);
+            var message = await GetCommitMessage(changeId);
+
+            try
+            {
+                repo.Commit(message, author, author);
+            }
+            catch (EmptyCommitException e)
+            {
+                Console.WriteLine($"Note: change {changeId} was empty, not committing: {e.Message}");
+            }
+        }
     }
 
     async static Task CheckUpdates()
@@ -321,11 +313,25 @@ class Downloader
         foreach (uint changeId in changeIdsToProcess)
         {
             Console.WriteLine("Downloading ChangeID {0}...", changeId);
+            string tempDownloadPath = Util.GetNewTempDir("download");
+            string tempProcessedPath = Util.GetNewTempDir("processed");
 
-            await DownloadChange(changeId);
+            await DownloadChange(changeId, tempDownloadPath);
 
-            var message = await GetMessage(changeId);
-            await ProcessContent(Program.Config.ContentDir, Path.Join(Program.Config.RepoDir, "Content"), message);
+            await ProcessContent(tempDownloadPath, tempProcessedPath);
+
+            // Successfully downloaded & processed, move to final folders and updated last processed.
+            string repoOutDir = Path.Join(Program.Config.RepoDir, "Content");
+            if (Directory.Exists(repoOutDir))
+                Directory.Delete(repoOutDir, true);
+            Directory.Move(tempProcessedPath, repoOutDir);
+
+            if (Directory.Exists(Program.Config.ContentDir))
+                Directory.Delete(Program.Config.ContentDir, true);
+            Directory.Move(tempDownloadPath, Program.Config.ContentDir);
+
+            await CommitToRepo(changeId);
+
             await LocalConfig.SetAsync("lastProcessedChangeNumber", changeId.ToString());
         }
     }
