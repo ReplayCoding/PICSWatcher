@@ -47,7 +47,8 @@ class Downloader
         System.IO.FileStream? prevFile = null;
         try
         {
-            prevFile = File.OpenRead(Path.Join(prevDir, manifestFile.FileName));
+            if (prevDir != null && prevManifestFile != null)
+                prevFile = File.OpenRead(Path.Join(prevDir, manifestFile.FileName));
         }
         catch
         {
