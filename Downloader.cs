@@ -292,6 +292,19 @@ class Downloader
             try
             {
                 repo.Commit(message, author, author);
+
+                var remote = repo.Network.Remotes["origin"];
+                if (remote != null)
+                {
+                    var options = new PushOptions();
+                    options.CredentialsProvider = (_url, _user, _cred) => new UsernamePasswordCredentials()
+                    {
+                        Username = Program.Config.GitUsername,
+                        Password = Program.Config.GitPassword
+                    };
+
+                    repo.Network.Push(remote, $"refs/heads/{Program.Config.GitBranch}", options);
+                }
             }
             catch (EmptyCommitException e)
             {

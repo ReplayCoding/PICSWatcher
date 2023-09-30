@@ -27,25 +27,9 @@ class Config
     public string ProcessorArgs { get; set; }
     public string ProcessorWorkingDir { get; set; }
 
-    public Config()
-    {
-        Username = "anonymous";
-        Password = "";
-
-        AppToWatch = 232250;
-        Branch = "public";
-
-        DbConnectionString = "server=localhost;userid=gametracking;password=password;database=gametracking;";
-
-        DataDir = "Data";
-        RepoDir = "Repo";
-
-        ContentDir = Path.Join(DataDir, "Content");
-        TempDir = Path.Join(DataDir, "Temp");
-
-        MaxChunkRetries = 3;
-        MinRequiredCDNServers = 5;
-    }
+    public string GitUsername { get; set; }
+    public string GitPassword { get; set; }
+    public string GitBranch { get; set; }
 
     public static Config LoadFromFile(FileStream file)
     {
