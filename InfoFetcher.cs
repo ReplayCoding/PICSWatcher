@@ -173,9 +173,9 @@ class InfoFetcher
             {
                 downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
             }
-            catch (TaskCanceledException)
+            catch (Exception e)
             {
-                Console.WriteLine("Timed out while downloading chunk, retrying...");
+                Console.WriteLine($"Timed out while downloading chunk, retrying... ({e.Message})");
                 await Task.Delay(1000);
             }
             SteamSession.Instance.CDNPool.ReturnConnection(server);
