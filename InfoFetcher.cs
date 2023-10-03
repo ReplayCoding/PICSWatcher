@@ -74,9 +74,39 @@ class InfoFetcher
     {
         await using var db = await Database.GetConnectionAsync();
         var requestCode = await SteamSession.Instance.content.GetManifestRequestCode(info.DepotID, info.AppID, info.ManifestID, Program.Config.Branch);
-        var server = SteamSession.Instance.CDNPool.TakeConnection();
-        var manifestContent = await SteamSession.Instance.cdnClient.DownloadManifestAsync(info.DepotID, info.ManifestID, requestCode, server, depotKey);
-        SteamSession.Instance.CDNPool.ReturnConnection(server);
+
+        uint retryCount = 0;
+        DepotManifest? manifestContent = null;
+        while (manifestContent == null && retryCount < Program.Config.MaxChunkRetries)
+        {
+            var server = SteamSession.Instance.CDNPool.TakeConnection();
+
+            try
+            {
+                manifestContent =
+                    await SteamSession.Instance.cdnClient.DownloadManifestAsync(
+                        info.DepotID,
+                        info.ManifestID,
+                        requestCode,
+                        server,
+                        depotKey
+                    );
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error while downloading manifest, retrying... ({e.Message})");
+                await Task.Delay(1000);
+            }
+
+            SteamSession.Instance.CDNPool.ReturnConnection(server);
+
+            retryCount++;
+        }
+
+        if (manifestContent == null)
+        {
+            throw new Exception($"couldn't fetch manifest {info.ManifestID}");
+        }
 
         return manifestContent;
     }
@@ -175,7 +205,7 @@ class InfoFetcher
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Timed out while downloading chunk, retrying... ({e.Message})");
+                Console.WriteLine($"Error while downloading chunk, retrying... ({e.Message})");
                 await Task.Delay(1000);
             }
             SteamSession.Instance.CDNPool.ReturnConnection(server);
