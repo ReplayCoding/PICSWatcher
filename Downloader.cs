@@ -6,8 +6,6 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 
-using Mono.Unix;
-
 using Dapper;
 
 using SteamKit2;
@@ -47,79 +45,68 @@ class Downloader
     async static Task DownloadFile(string outFile, DepotManifest manifest, DepotManifest.FileData manifestFile, byte[] depotKey, DepotManifest.FileData? prevManifestFile, string? prevDir = null)
     {
         System.IO.FileStream? prevFile = null;
-        var prevFilePath = Path.Join(prevDir, manifestFile.FileName);
         try
         {
             if (prevDir != null && prevManifestFile != null)
-                prevFile = File.OpenRead(prevFilePath);
+                prevFile = File.OpenRead(Path.Join(prevDir, manifestFile.FileName));
         }
         catch
         {
             // Don't care if we don't find a previous file, just ignore it and download
         }
 
-        // Complete match, hardlink to save space
-        if (prevFilePath != null && prevFile != null && prevManifestFile != null && prevManifestFile.FileHash == manifestFile.FileHash)
+        using (var of = File.Create(outFile))
         {
-            var prevUnixFile = new UnixFileInfo(prevFilePath);
-            prevUnixFile.CreateLink(outFile);
-        }
-        else
-        {
-            using (var of = File.Create(outFile))
+            of.SetLength((long)manifestFile.TotalSize);
+
+            // TODO: Download multiple chunks at the same time
+            foreach (var chunk in manifestFile.Chunks)
             {
-                of.SetLength((long)manifestFile.TotalSize);
-
-                // TODO: Download multiple chunks at the same time
-                foreach (var chunk in manifestFile.Chunks)
+                byte[]? downloadedChunk = null;
+                DepotManifest.ChunkData? prevChunk = null;
+                if (prevManifestFile != null)
+                    prevChunk = prevManifestFile.Chunks.FirstOrDefault(c => c.ChunkID.SequenceEqual(chunk.ChunkID));
+                if (prevChunk != null && prevFile != null)
                 {
-                    byte[]? downloadedChunk = null;
-                    DepotManifest.ChunkData? prevChunk = null;
-                    if (prevManifestFile != null)
-                        prevChunk = prevManifestFile.Chunks.FirstOrDefault(c => c.ChunkID.SequenceEqual(chunk.ChunkID));
-                    if (prevChunk != null && prevFile != null)
+                    try
                     {
-                        try
+                        var tmp = new byte[prevChunk.UncompressedLength];
+
+                        prevFile.Seek((long)prevChunk.Offset, SeekOrigin.Begin);
+                        await prevFile.ReadAsync(tmp, 0, tmp.Length);
+
+                        var adler = Util.AdlerHash(tmp);
+                        if (adler.SequenceEqual(prevChunk.Checksum))
                         {
-                            var tmp = new byte[prevChunk.UncompressedLength];
-
-                            prevFile.Seek((long)prevChunk.Offset, SeekOrigin.Begin);
-                            await prevFile.ReadAsync(tmp, 0, tmp.Length);
-
-                            var adler = Util.AdlerHash(tmp);
-                            if (adler.SequenceEqual(prevChunk.Checksum))
-                            {
-                                // We found a chunk to reuse!
-                                downloadedChunk = tmp;
-                            }
-                            else
-                            {
-                                Console.WriteLine($"Couldn't reuse chunk for file {0} because hash doesn't match", manifestFile.FileName);
-                            }
+                            // We found a chunk to reuse!
+                            downloadedChunk = tmp;
                         }
-                        catch
+                        else
                         {
-                            // Ignore, will download
+                            Console.WriteLine($"Couldn't reuse chunk for file {0} because hash doesn't match", manifestFile.FileName);
                         }
                     }
-
-                    // Couldn't reuse chunk, download it
-                    if (downloadedChunk == null)
+                    catch
                     {
-                        var downloadedChunkInfo = await InfoFetcher.DownloadChunk(manifest, chunk, depotKey);
-                        if (downloadedChunkInfo != null)
-                            downloadedChunk = downloadedChunkInfo.Data;
+                        // Ignore, will download
                     }
-
-                    if (downloadedChunk == null)
-                        throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkID)} from manifest {manifest.ManifestGID}");
-
-                    of.Seek((long)chunk.Offset, SeekOrigin.Begin);
-                    of.Write(downloadedChunk, 0, downloadedChunk.Length);
                 }
-            };
-        }
 
+                // Couldn't reuse chunk, download it
+                if (downloadedChunk == null)
+                {
+                    var downloadedChunkInfo = await InfoFetcher.DownloadChunk(manifest, chunk, depotKey);
+                    if (downloadedChunkInfo != null)
+                        downloadedChunk = downloadedChunkInfo.Data;
+                }
+
+                if (downloadedChunk == null)
+                    throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkID)} from manifest {manifest.ManifestGID}");
+
+                of.Seek((long)chunk.Offset, SeekOrigin.Begin);
+                of.Write(downloadedChunk, 0, downloadedChunk.Length);
+            }
+        };
 
         if (prevFile != null)
             await prevFile.DisposeAsync();
