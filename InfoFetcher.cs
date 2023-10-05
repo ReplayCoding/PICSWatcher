@@ -95,7 +95,7 @@ class InfoFetcher
             catch (Exception e)
             {
                 Console.WriteLine($"Error while downloading manifest, retrying... ({e.Message})");
-                await Task.Delay(1000);
+                await Task.Delay(Program.Config.RetryDelay);
             }
 
             SteamSession.Instance.CDNPool.ReturnConnection(server);
@@ -206,7 +206,7 @@ class InfoFetcher
             catch (Exception e)
             {
                 Console.WriteLine($"Error while downloading chunk, retrying... ({e.Message})");
-                await Task.Delay(1000);
+                await Task.Delay(Program.Config.RetryDelay);
             }
             SteamSession.Instance.CDNPool.ReturnConnection(server);
 

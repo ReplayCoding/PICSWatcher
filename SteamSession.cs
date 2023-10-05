@@ -101,7 +101,7 @@ class SteamSession
             return;
 
         Console.WriteLine("Disconnected! Trying to reconnect...");
-        await Task.Delay(TimeSpan.FromSeconds(15));
+        await Task.Delay(Program.Config.ReconnectDelay);
 
         client.Connect();
     }

@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 
 class Config
 {
+#pragma warning disable CS8618
     [JsonRequired]
     public string Username { get; set; }
     [JsonRequired]
@@ -32,6 +33,13 @@ class Config
     public uint MinRequiredCDNServers { get; set; }
 
     [JsonRequired]
+    public int ReconnectDelay { get; set; }
+    [JsonRequired]
+    public int PicsRefreshDelay { get; set; }
+    [JsonRequired]
+    public int RetryDelay { get; set; }
+
+    [JsonRequired]
     public string Processor { get; set; }
     [JsonRequired]
     public string ProcessorArgs { get; set; }
@@ -47,6 +55,7 @@ class Config
 
     public string ContentDir { get; set; }
     public string TempDir { get; set; }
+#pragma warning restore CS8618
 
     public static Config LoadFromFile(FileStream file)
     {

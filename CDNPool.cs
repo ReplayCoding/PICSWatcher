@@ -2,7 +2,6 @@ namespace GameTracker;
 
 using System.Collections.Concurrent;
 
-using SteamKit2;
 using SteamKit2.CDN;
 
 class CDNPool
@@ -30,7 +29,7 @@ class CDNPool
 
             Servers = new ConcurrentQueue<Server>(Servers.DistinctBy(s => s.Host));
             if (Servers.Count < Program.Config.MinRequiredCDNServers)
-                await Task.Delay(1500);
+                await Task.Delay(Program.Config.RetryDelay);
         }
 
         Console.WriteLine($"Got {Servers.Count} CDN servers");

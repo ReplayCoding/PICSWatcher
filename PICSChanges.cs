@@ -57,7 +57,7 @@ class PICSChanges
         while (currentHash == TickerHash)
         {
             await SteamSession.Instance.apps.PICSGetChangesSince(LastChangeNumber, true, false);
-            await Task.Delay(3000);
+            await Task.Delay(Program.Config.PicsRefreshDelay);
         };
     }
 
