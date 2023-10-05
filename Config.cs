@@ -1,35 +1,52 @@
 namespace GameTracker;
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 class Config
 {
+    [JsonRequired]
     public string Username { get; set; }
+    [JsonRequired]
     public string Password { get; set; }
 
+    [JsonRequired]
     public uint AppToWatch { get; set; }
+    [JsonRequired]
     public string Branch { get; set; }
 
+    [JsonRequired]
     public IEnumerable<uint> DepotsToDownload { get; set; }
 
+    [JsonRequired]
     public string DbConnectionString { get; set; }
 
+    [JsonRequired]
     public string DataDir { get; set; }
+    [JsonRequired]
     public string RepoDir { get; set; }
+
+    [JsonRequired]
+    public uint MaxChunkRetries { get; set; }
+    [JsonRequired]
+    public uint MinRequiredCDNServers { get; set; }
+
+    [JsonRequired]
+    public string Processor { get; set; }
+    [JsonRequired]
+    public string ProcessorArgs { get; set; }
+    [JsonRequired]
+    public string ProcessorWorkingDir { get; set; }
+
+    [JsonRequired]
+    public string GitUsername { get; set; }
+    [JsonRequired]
+    public string GitPassword { get; set; }
+    [JsonRequired]
+    public string GitBranch { get; set; }
 
     public string ContentDir { get; set; }
     public string TempDir { get; set; }
-
-    public uint MaxChunkRetries { get; set; }
-    public uint MinRequiredCDNServers { get; set; }
-
-    public string Processor { get; set; }
-    public string ProcessorArgs { get; set; }
-    public string ProcessorWorkingDir { get; set; }
-
-    public string GitUsername { get; set; }
-    public string GitPassword { get; set; }
-    public string GitBranch { get; set; }
 
     public static Config LoadFromFile(FileStream file)
     {
