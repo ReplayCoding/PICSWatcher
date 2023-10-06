@@ -13,6 +13,10 @@
   "MaxChunkRetries": 3,
   "MinRequiredCDNServers": 5,
 
+  "ReconnectDelay": 15000,
+  "PicsRefreshDelay": 300000,
+  "RetryDelay": 5000,
+
   "Processor": "<replace me>",
   "ProcessorArgs": "",
   "ProcessorWorkingDir": "<replace me>"
