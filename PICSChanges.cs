@@ -9,6 +9,8 @@ using System.Linq;
 
 class PICSChanges
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     private uint LastChangeNumber = 0;
     private uint TickerHash = 0;
 
@@ -35,7 +37,7 @@ class PICSChanges
         if (LastChangeNumber == 0)
             LastChangeNumber = 1;
 
-        Console.WriteLine($"Previous changelist was {LastChangeNumber}");
+        Logger.Info($"Previous changelist was {LastChangeNumber}");
     }
 
     public void StartTick()
@@ -148,7 +150,7 @@ class PICSChanges
 
         if (cb.RequiresFullAppUpdate)
         {
-            Console.WriteLine("Full app update required for change {0}", cb.CurrentChangeNumber);
+            Logger.Info("Full app update required for change {0}", cb.CurrentChangeNumber);
             needsUpdate = true;
         }
 
@@ -183,7 +185,7 @@ class PICSChanges
                 }
                 else
                 {
-                    Console.WriteLine("Ignoring empty change: {0}", appInfo.ChangeId);
+                    Logger.Info("Ignoring empty change: {0}", appInfo.ChangeId);
                 }
             }
             else
@@ -199,7 +201,7 @@ class PICSChanges
 
         if (needsUpdate)
         {
-            Console.WriteLine("Update needed");
+            Logger.Info("Update needed");
             _ = Task.Run(Downloader.RunUpdates);
         }
     }

@@ -14,6 +14,8 @@ using LibGit2Sharp;
 
 class Downloader
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     private static readonly SemaphoreSlim DownloadSem = new SemaphoreSlim(1, 1);
     class BuildInfo
     {
@@ -83,7 +85,7 @@ class Downloader
                         }
                         else
                         {
-                            Console.WriteLine($"Couldn't reuse chunk for file {0} because hash doesn't match", manifestFile.FileName);
+                            Logger.Warn($"Couldn't reuse chunk for file {0} because hash doesn't match", manifestFile.FileName);
                         }
                     }
                     catch
@@ -144,7 +146,7 @@ class Downloader
             var outFile = Path.Join(outputDir, file.FileName);
             if (Path.Exists(outFile))
             {
-                Console.WriteLine($"Path {outFile} already exists, not replacing");
+                Logger.Info($"Path {outFile} already exists, not replacing");
                 continue;
             };
 
@@ -157,7 +159,7 @@ class Downloader
             await DownloadFile(outFile, manifest, file, depotKey, prevFile, prevDir);
             if (!VerifyFile(outFile, file))
             {
-                Console.WriteLine($"File {file.FileName} failed to verify, retrying download");
+                Logger.Warn($"File {file.FileName} failed to verify, retrying download");
                 await DownloadFile(outFile, manifest, file, depotKey, null);
                 if (!VerifyFile(outFile, file))
                 {
@@ -213,7 +215,7 @@ class Downloader
         var manifest = await InfoFetcher.FetchManifest(depot, depotKey);
         if (manifest.Files == null || manifest.FilenamesEncrypted)
         {
-            Console.WriteLine($"Manifest {depot.ManifestID} has no files, skipping");
+            Logger.Info($"Manifest {depot.ManifestID} has no files, skipping");
             return;
         }
 
@@ -243,7 +245,7 @@ class Downloader
                     continue;
 
                 await DownloadDepot(depot, downloadPath, changeId);
-                Console.WriteLine("\t{0}", depot);
+                Logger.Info($"\t{depot}");
             }
         }
         catch
@@ -308,7 +310,7 @@ class Downloader
             }
             catch (EmptyCommitException e)
             {
-                Console.WriteLine($"Note: change {changeId} was empty, not committing: {e.Message}");
+                Logger.Info($"Change {changeId} was empty, not committing: {e.Message}");
             }
         }
     }
@@ -326,7 +328,7 @@ class Downloader
 
         foreach (uint changeId in changeIdsToProcess)
         {
-            Console.WriteLine("Downloading ChangeID {0}...", changeId);
+            Logger.Info("Downloading ChangeID {0}...", changeId);
             string tempDownloadPath = Util.GetNewTempDir("download");
             string tempProcessedPath = Util.GetNewTempDir("processed");
 

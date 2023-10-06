@@ -6,6 +6,8 @@ using SteamKit2.CDN;
 
 class CDNPool
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     private readonly SteamSession Session;
     private ConcurrentQueue<Server> Servers = new ConcurrentQueue<Server>();
 
@@ -32,7 +34,7 @@ class CDNPool
                 await Task.Delay(Program.Config.RetryDelay);
         }
 
-        Console.WriteLine($"Got {Servers.Count} CDN servers");
+        Logger.Info($"Got {Servers.Count} CDN servers");
     }
 
     public Server TakeConnection()

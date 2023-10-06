@@ -6,9 +6,11 @@ using MySqlConnector;
 
 class LocalConfig
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     public static async Task SetAsync(string key, string value)
     {
-        // Console.WriteLine($"LocalConfig setting `{key}` to `{value}`");
+        Logger.Debug($"Setting `{key}` to `{value}`");
         await using var connection = await Database.GetConnectionAsync();
         await connection.ExecuteAsync(@"
                 INSERT INTO `LocalConfig` (`Key`, `Value`)
@@ -23,14 +25,14 @@ class LocalConfig
 
     public static async Task DeleteAsync(string key)
     {
-        // Console.WriteLine($"LocalConfig deleting `{key}`");
+        Logger.Debug($"Deleting `{key}`");
         await using var connection = await Database.GetConnectionAsync();
         await connection.ExecuteAsync(@"DELETE FROM `LocalConfig` WHERE `Key` = @Key", new { Key = key, });
     }
 
     public static void Set(string key, string value)
     {
-        // Console.WriteLine($"LocalConfig setting `{key}` to `{value}`");
+        Logger.Debug($"Setting `{key}` to `{value}`");
         using var connection = Database.GetConnection();
         connection.Execute(@"
                 INSERT INTO `LocalConfig` (`Key`, `Value`)

@@ -8,6 +8,8 @@ using SteamKit2;
 
 class InfoFetcher
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     public class DepotInfo
     {
         public readonly uint DepotId;
@@ -66,7 +68,7 @@ class InfoFetcher
             return depotKey.DepotKey;
         }
 
-        Console.WriteLine($"Couldn't get depot key for {depotId}, got result {depotKey.Result}");
+        Logger.Warn($"Couldn't get depot key for {depotId}, got result {depotKey.Result}");
         return null;
     }
 
@@ -94,7 +96,7 @@ class InfoFetcher
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error while downloading manifest, retrying... ({e.Message})");
+                Logger.Warn($"Error while downloading manifest, retrying... ({e.Message})");
                 await Task.Delay(Program.Config.RetryDelay);
             }
 
@@ -131,7 +133,7 @@ class InfoFetcher
 
         if (productInfoResults.Results == null)
         {
-            Console.WriteLine("Product info results are null!");
+            Logger.Warn("Product info results are null!");
             return null;
         }
 
@@ -139,7 +141,7 @@ class InfoFetcher
 
         if (productInfo == null)
         {
-            Console.WriteLine("Product info is null!");
+            Logger.Warn("Product info is null!");
             return null;
         }
 
@@ -147,13 +149,13 @@ class InfoFetcher
         if (productInfo.Apps.TryGetValue(appId, out info))
         {
             if (expectedChangeNumber != null && info.ChangeNumber != expectedChangeNumber)
-                Console.WriteLine($"Expected change number {expectedChangeNumber}, got {info.ChangeNumber}");
+                Logger.Warn($"Expected change number {expectedChangeNumber}, got {info.ChangeNumber}");
 
             return GetAppInfoFromKV(info.ChangeNumber, info.KeyValues);
         }
         else
         {
-            Console.WriteLine("Couldn't get appinfo for app!");
+            Logger.Warn("Couldn't get appinfo for app!");
         }
 
         return null;
@@ -171,14 +173,14 @@ class InfoFetcher
 
             if (depot["manifests"] == KeyValue.Invalid)
             {
-                Console.WriteLine($"Invalid depot {depotID}: skipping (shared or encrypted)");
+                Logger.Info($"Invalid depot {depotID}: skipping (shared or encrypted)");
                 continue;
             }
 
             var branch = Program.Config.Branch;
             var manifestInfoKV = depot["manifests"][branch]["gid"];
 
-            Console.WriteLine($"Got depot {depotID} {manifestInfoKV}");
+            Logger.Info($"Got depot {depotID} {manifestInfoKV}");
             depots.Add(new DepotInfo(depotID, branch, manifestInfoKV.AsUnsignedLong()));
         }
 
@@ -205,7 +207,7 @@ class InfoFetcher
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error while downloading chunk, retrying... ({e.Message})");
+                Logger.Warn($"Error while downloading chunk, retrying... ({e.Message})");
                 await Task.Delay(Program.Config.RetryDelay);
             }
             SteamSession.Instance.CDNPool.ReturnConnection(server);

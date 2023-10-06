@@ -10,6 +10,8 @@ using SteamKit2.CDN;
 
 class SteamSession
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     public static SteamSession Instance { get; } = new SteamSession();
 
     public readonly SteamClient client;
@@ -59,7 +61,7 @@ class SteamSession
 
     private async void OnConnected(SteamClient.ConnectedCallback cb)
     {
-        Console.WriteLine("Connected!");
+        Logger.Info("Connected!");
 
         if (Program.Config.Username == "anonymous")
         {
@@ -100,7 +102,7 @@ class SteamSession
         if (!IsRunning)
             return;
 
-        Console.WriteLine("Disconnected! Trying to reconnect...");
+        Logger.Info("Disconnected! Trying to reconnect...");
         await Task.Delay(Program.Config.ReconnectDelay);
 
         client.Connect();
@@ -110,24 +112,24 @@ class SteamSession
     {
         if (cb.Result != EResult.OK)
         {
-            Console.WriteLine("Error while logging in: {0}", cb.Result);
+            Logger.Error("Error while logging in: {0}", cb.Result);
             await LocalConfig.DeleteAsync("accessToken");
             return;
         }
 
-        Console.WriteLine($"Cell is {cb.CellID}.");
+        Logger.Info($"Cell is {cb.CellID}.");
         await CDNPool.FetchNewServers();
 
         PICSChanges.StartTick();
         // Always force an update check on login
         _ = Task.Run(Downloader.RunUpdates);
 
-        Console.WriteLine("Logged On! Server time is {0}", cb.ServerTime);
+        Logger.Info("Logged On! Server time is {0}", cb.ServerTime);
     }
 
     private void OnLoggedOff(SteamUser.LoggedOffCallback cb)
     {
-        Console.WriteLine("Logged off, disconnecting");
+        Logger.Warn("Logged off, disconnecting");
         client.Disconnect();
     }
 }

@@ -6,6 +6,21 @@ using System.CommandLine;
 class Program
 {
     public static Config Config;
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
+    private static void SetupLogging()
+    {
+        var logConfig = new NLog.Config.LoggingConfiguration();
+
+        var logConsole = new NLog.Targets.ColoredConsoleTarget("logconsole")
+        {
+            Layout = "[${level:uppercase=true} ${logger}] ${message}"
+        };
+
+        logConfig.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, logConsole);
+
+        NLog.LogManager.Configuration = logConfig;
+    }
 
     private static int Main(string[] args)
     {
@@ -18,8 +33,10 @@ class Program
 
         rootCommand.SetHandler((configFile, resetLastProcessedToZero) =>
         {
+            SetupLogging();
+
             Config = Config.LoadFromFile(configFile.OpenRead());
-            Console.WriteLine($"Watching app {Config.AppToWatch} with user {Config.Username}");
+            Logger.Info($"Watching app {Config.AppToWatch} with user {Config.Username}");
 
             // Setup content & temporary dirs
             Config.SetupDirs();
@@ -27,9 +44,8 @@ class Program
             if (resetLastProcessedToZero)
                 LocalConfig.Set("lastProcessedChangeNumber", "0");
 
-            Console.WriteLine("Connecting...");
+            Logger.Info("Connecting...");
             SteamSession.Instance.Run();
-            Console.WriteLine("Done");
 
         }, configOption, resetLastProcessedToZero);
 
