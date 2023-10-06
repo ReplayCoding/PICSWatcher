@@ -43,7 +43,7 @@ class SteamSession
         CallbackManager.Subscribe<SteamUser.LoggedOnCallback>(OnLoggedOn);
         CallbackManager.Subscribe<SteamUser.LoggedOffCallback>(OnLoggedOff);
 
-        PICSChanges = new PICSChanges(CallbackManager);
+        PICSChanges = new PICSChanges();
     }
 
     public void Run()

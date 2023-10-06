@@ -21,10 +21,8 @@ class PICSChanges
             => (DepotID, ManifestID) = (depotID, manifestID);
     }
 
-    public PICSChanges(CallbackManager manager)
+    public PICSChanges()
     {
-        manager.Subscribe<SteamApps.PICSChangesCallback>(OnPICSChanges);
-
         LastChangeNumber = LocalConfig.Get<uint>("lastSeenChangeNumber");
 
         using (var db = Database.GetConnection())
@@ -56,7 +54,9 @@ class PICSChanges
         var currentHash = TickerHash;
         while (currentHash == TickerHash)
         {
-            await SteamSession.Instance.apps.PICSGetChangesSince(LastChangeNumber, true, false);
+            var changes = await SteamSession.Instance.apps.PICSGetChangesSince(LastChangeNumber, true, false);
+            await OnPICSChanges(changes);
+
             await Task.Delay(Program.Config.PicsRefreshDelay);
         };
     }
@@ -138,7 +138,7 @@ class PICSChanges
         return false;
     }
 
-    public async void OnPICSChanges(SteamApps.PICSChangesCallback cb)
+    public async Task OnPICSChanges(SteamApps.PICSChangesCallback cb)
     {
         bool needsUpdate = false;
         uint changeNumber = 0;
