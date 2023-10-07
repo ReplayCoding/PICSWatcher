@@ -321,10 +321,12 @@ class Downloader
 
         // Get sorted list of changeids to process
         await using var db = await Database.GetConnectionAsync();
-        IEnumerable<uint> changeIdsToProcess = await db.QueryAsync<uint>(
+        List<uint> changeIdsToProcess = (await db.QueryAsync<uint>(
                 "select DISTINCT `ChangeID` from DepotVersions WHERE ChangeID > @LastProcessedChangeNumber ORDER BY `ChangeID` ASC",
                 new { LastProcessedChangeNumber = lastProcessedChangeNumber }
-        );
+        )).ToList();
+
+        Logger.Info($"Changes in queue: {String.Join(", ", changeIdsToProcess)}");
 
         foreach (uint changeId in changeIdsToProcess)
         {
