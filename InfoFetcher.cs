@@ -208,7 +208,7 @@ class InfoFetcher
             }
             catch (Exception e)
             {
-                Logger.Warn($"Error while downloading chunk, retrying... ({e.Message})");
+                Logger.Debug($"Error while downloading chunk, retrying... ({e.Message})");
                 await Task.Delay(Program.Config.RetryDelay);
             }
             SteamSession.Instance.CDNPool.ReturnConnection(server);
