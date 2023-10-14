@@ -9,13 +9,14 @@ class CDNPool
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
     private readonly SteamSession Session;
-    private ConcurrentQueue<Server> Servers = new ConcurrentQueue<Server>();
+    private BlockingCollection<Server> Servers = new BlockingCollection<Server>(new ConcurrentQueue<Server>());
 
     public CDNPool(SteamSession session) => (Session) = (session);
 
     public async Task FetchNewServers()
     {
-        while (Servers.Count < Program.Config.MinRequiredCDNServers)
+        var serverList = new List<Server>();
+        while (serverList.Count < Program.Config.MinRequiredCDNServers)
         {
             // According to steam-lancache-prefill:
             // GetServersForSteamPipe() sometimes hangs and never times out.  Wrapping the call in another task, so that we can timeout the entire method.
@@ -25,31 +26,26 @@ class CDNPool
                 if (server.AllowedAppIds.Count() < 0 && !server.AllowedAppIds.Contains(Program.Config.AppToWatch))
                     continue;
 
-                Servers.Enqueue(server);
+                serverList.Add(server);
             }
 
 
-            Servers = new ConcurrentQueue<Server>(Servers.DistinctBy(s => s.Host));
-            if (Servers.Count < Program.Config.MinRequiredCDNServers)
+            serverList = serverList.DistinctBy(s => s.Host).ToList();
+            if (serverList.Count < Program.Config.MinRequiredCDNServers)
                 await Task.Delay(Program.Config.RetryDelay);
         }
 
+        Servers = new BlockingCollection<Server>(new ConcurrentQueue<Server>(serverList));
         Logger.Info($"Got {Servers.Count} CDN servers");
     }
 
     public Server TakeConnection()
     {
-        Servers.TryDequeue(out Server? server);
-        if (server == null)
-        {
-            throw new Exception("No more servers left!");
-        }
-
-        return server;
+        return Servers.Take();
     }
 
     public void ReturnConnection(Server server)
     {
-        Servers.Enqueue(server);
+        Servers.Add(server);
     }
 }

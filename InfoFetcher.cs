@@ -203,6 +203,7 @@ class InfoFetcher
             var server = SteamSession.Instance.CDNPool.TakeConnection();
             try
             {
+                Logger.Debug($"Downloading chunk {BitConverter.ToString(chunk.ChunkID)} with server {server.VHost}");
                 downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
             }
             catch (Exception e)

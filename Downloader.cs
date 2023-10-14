@@ -40,17 +40,47 @@ class Downloader
         using (var stream = File.OpenRead(fileName))
         {
             byte[] hash = sha1.ComputeHash(stream);
+
+            Logger.Debug($"File verification for {fileName}: expected hash {BitConverter.ToString(fileData.FileHash)}, computed hash {BitConverter.ToString(hash)}");
             return fileData.FileHash.SequenceEqual(hash);
         }
     }
 
+    class DownloadedChunkInfo
+    {
+        public SteamKit2.CDN.DepotChunk? DownloadedChunk;
+        public DepotManifest.ChunkData ChunkInfo;
+
+        public DownloadedChunkInfo(SteamKit2.CDN.DepotChunk? downloadedChunk, DepotManifest.ChunkData chunkInfo) => (DownloadedChunk, ChunkInfo) = (downloadedChunk, chunkInfo);
+    }
+
+    async static Task<DownloadedChunkInfo> DownloadChunk(DepotManifest manifest, DepotManifest.ChunkData chunk, byte[] depotKey)
+    {
+        var downloadedChunkInfo = await InfoFetcher.DownloadChunk(manifest, chunk, depotKey);
+        return new DownloadedChunkInfo(downloadedChunkInfo, chunk);
+    }
+
     async static Task DownloadFile(string outFile, DepotManifest manifest, DepotManifest.FileData manifestFile, byte[] depotKey, DepotManifest.FileData? prevManifestFile, string? prevDir = null)
     {
+        var prevFilePath = Path.Join(prevDir, manifestFile.FileName);
         System.IO.FileStream? prevFile = null;
         try
         {
             if (prevDir != null && prevManifestFile != null)
-                prevFile = File.OpenRead(Path.Join(prevDir, manifestFile.FileName));
+            {
+                if (prevManifestFile.FileHash.SequenceEqual(manifestFile.FileHash))
+                {
+                    // Perfect match, just copy entire file
+                    Logger.Debug($"Copying entire file {outFile}");
+                    File.Copy(prevFilePath, outFile);
+
+                    return;
+                }
+                else
+                {
+                    prevFile = File.OpenRead(prevFilePath);
+                }
+            }
         }
         catch
         {
@@ -61,7 +91,7 @@ class Downloader
         {
             of.SetLength((long)manifestFile.TotalSize);
 
-            // TODO: Download multiple chunks at the same time
+            var chunksToDownload = new List<Task<DownloadedChunkInfo>>();
             foreach (var chunk in manifestFile.Chunks)
             {
                 byte[]? downloadedChunk = null;
@@ -97,16 +127,31 @@ class Downloader
                 // Couldn't reuse chunk, download it
                 if (downloadedChunk == null)
                 {
-                    var downloadedChunkInfo = await InfoFetcher.DownloadChunk(manifest, chunk, depotKey);
-                    if (downloadedChunkInfo != null)
-                        downloadedChunk = downloadedChunkInfo.Data;
+                    chunksToDownload.Add(DownloadChunk(manifest, chunk, depotKey));
+                }
+                else
+                {
+                    Logger.Debug($"Reusing chunk {BitConverter.ToString(chunk.ChunkID)}");
+                    of.Seek((long)chunk.Offset, SeekOrigin.Begin);
+                    of.Write(downloadedChunk, 0, downloadedChunk.Length);
                 }
 
-                if (downloadedChunk == null)
-                    throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkID)} from manifest {manifest.ManifestGID}");
+            }
 
-                of.Seek((long)chunk.Offset, SeekOrigin.Begin);
-                of.Write(downloadedChunk, 0, downloadedChunk.Length);
+            while (chunksToDownload.Any())
+            {
+                Task<DownloadedChunkInfo> chunkTask = await Task.WhenAny(chunksToDownload);
+                chunksToDownload.Remove(chunkTask);
+
+                DownloadedChunkInfo chunk = await chunkTask;
+
+                if (chunk.DownloadedChunk == null)
+                    throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkInfo.ChunkID)} from manifest {manifest.ManifestGID}");
+
+                byte[] chunkData = chunk.DownloadedChunk.Data;
+
+                of.Seek((long)chunk.ChunkInfo.Offset, SeekOrigin.Begin);
+                of.Write(chunkData, 0, chunkData.Length);
             }
         };
 
