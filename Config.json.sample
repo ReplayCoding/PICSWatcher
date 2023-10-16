@@ -3,15 +3,15 @@
   "Password": "",
 
   "AppToWatch": 232250,
-  "DepotsToDownload": [232256],
+  "DepotsToDownload": [],
   "Branch": "public",
 
   "DbConnectionString": "server=localhost;userid=gametracking;password=password;database=gametracking;",
   "DataDir": "Data",
   "RepoDir": "Repo",
 
-  "MaxChunkRetries": 3,
-  "MinRequiredCDNServers": 5,
+  "MaxChunkRetries": 10,
+  "MinRequiredCDNServers": 10,
 
   "ReconnectDelay": 15000,
   "PicsRefreshDelay": 300000,
@@ -19,5 +19,9 @@
 
   "Processor": "<replace me>",
   "ProcessorArgs": "",
-  "ProcessorWorkingDir": "<replace me>"
+  "ProcessorWorkingDir": "/tmp",
+
+  "GitUsername": "<git remote username>",
+  "GitPassword": "<git remote password>",
+  "GitBranch": "main"
 }
