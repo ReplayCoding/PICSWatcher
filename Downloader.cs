@@ -71,21 +71,26 @@ class Downloader
                 if (prevManifestFile.FileHash.SequenceEqual(manifestFile.FileHash))
                 {
                     // Perfect match, just copy entire file
+                    // NOTE: This will create a hardlink, this could create problems later if we decide to modify files inplace
                     Logger.Debug($"Copying entire file {outFile}");
-                    File.Copy(prevFilePath, outFile);
+                    Mono.Unix.UnixFileSystemInfo.TryGetFileSystemEntry(prevFilePath, out var prevFileInfo);
+                    if (prevFileInfo != null)
+                    {
+                        prevFileInfo.CreateLink(outFile);
+                        return;
+                    }
+                }
 
-                    return;
-                }
-                else
-                {
-                    prevFile = File.OpenRead(prevFilePath);
-                }
+                // Not a perfect match, load the previous file so we can copy what we need
+                prevFile = File.OpenRead(prevFilePath);
             }
         }
         catch
         {
             // Don't care if we don't find a previous file, just ignore it and download
         }
+
+        Logger.Debug($"Downloading file {outFile}");
 
         using (var of = File.Create(outFile))
         {
@@ -379,11 +384,17 @@ class Downloader
             string tempDownloadPath = Util.GetNewTempDir("download");
             string tempProcessedPath = Util.GetNewTempDir("processed");
 
+            var downloadWatch = System.Diagnostics.Stopwatch.StartNew();
             await DownloadChange(changeId, tempDownloadPath);
+            downloadWatch.Stop();
 
+            Logger.Info("Processing ChangeID {0}...", changeId);
+            var processWatch = System.Diagnostics.Stopwatch.StartNew();
             await ProcessContent(tempDownloadPath, tempProcessedPath);
+            processWatch.Stop();
 
             // Successfully downloaded & processed, move to final folders and updated last processed.
+            var moveCommitWatch = System.Diagnostics.Stopwatch.StartNew();
             string repoOutDir = Path.Join(Program.Config.RepoDir, "Content");
             if (Directory.Exists(repoOutDir))
                 Directory.Delete(repoOutDir, true);
@@ -394,8 +405,21 @@ class Downloader
             Directory.Move(tempDownloadPath, Program.Config.ContentDir);
 
             await CommitToRepo(changeId);
+            Logger.Info("Committed ChangeID {0}...", changeId);
+            moveCommitWatch.Stop();
 
             await LocalConfig.SetAsync("lastProcessedChangeNumber", changeId.ToString());
+
+            var timingsString = @$"
+==========================================================
+Timings:
+    Download: {downloadWatch.ElapsedMilliseconds}ms
+    Process: {processWatch.ElapsedMilliseconds}ms
+    Move & Commit: {moveCommitWatch.ElapsedMilliseconds}ms
+==========================================================
+            ";
+
+            Logger.Warn(timingsString);
         }
     }
 

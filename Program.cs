@@ -17,7 +17,7 @@ class Program
             Layout = "[${level:uppercase=true} ${logger}] ${message}"
         };
 
-        logConfig.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, logConsole);
+        logConfig.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, logConsole);
 
         NLog.LogManager.Configuration = logConfig;
     }

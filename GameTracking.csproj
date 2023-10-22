@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.0.143" />
     <PackageReference Include="LibGit2Sharp" Version="0.27.2" />
+    <PackageReference Include="Mono.Unix" Version="7.1.0-final.1.21458.1" />
     <PackageReference Include="MySqlConnector" Version="2.2.6" />
     <PackageReference Include="NLog" Version="5.2.4" />
     <PackageReference Include="SteamKit2" Version="2.5.0-Beta.1" />
