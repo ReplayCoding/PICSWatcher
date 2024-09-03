@@ -1,6 +1,7 @@
 ﻿namespace GameTracker;
 
 using System;
+using System.Buffers;
 
 using Dapper;
 
@@ -81,7 +82,7 @@ class InfoFetcher
         DepotManifest? manifestContent = null;
         while (manifestContent == null && retryCount < Program.Config.MaxChunkRetries)
         {
-            var server = SteamSession.Instance.CDNPool.TakeConnection();
+            var server = await SteamSession.Instance.CDNPool.TakeConnection();
 
             try
             {
@@ -194,28 +195,53 @@ class InfoFetcher
         return new AppInfo(info["appid"].AsUnsignedInteger(), changeNumber, depots, timeUpdated, buildId);
     }
 
-    public async static Task<SteamKit2.CDN.DepotChunk?> DownloadChunk(DepotManifest manifest, DepotManifest.ChunkData chunk, byte[] depotKey)
+    public class DownloadedChunkInfo
+    {
+        public byte[] Data;
+        public int Length;
+
+        public DepotManifest.ChunkData ChunkInfo;
+
+        public DownloadedChunkInfo(byte[] data, int length, DepotManifest.ChunkData chunkInfo) => (Data, Length, ChunkInfo) = (data, length, chunkInfo);
+        ~DownloadedChunkInfo() {
+            Logger.Debug($"Returning chunk data to pool ({this.ChunkInfo.ChunkID})");
+            ArrayPool<byte>.Shared.Return(this.Data);
+        }
+    }
+
+    public async static Task<DownloadedChunkInfo?> DownloadChunk(DepotManifest manifest, DepotManifest.ChunkData chunk, byte[] depotKey)
     {
         uint retryCount = 0;
-        SteamKit2.CDN.DepotChunk? downloadedChunk = null;
-        while (downloadedChunk == null && retryCount < Program.Config.MaxChunkRetries)
+        var chunkBuffer = ArrayPool<byte>.Shared.Rent((int)chunk.UncompressedLength);
+
+        while (retryCount < Program.Config.MaxChunkRetries)
         {
-            var server = SteamSession.Instance.CDNPool.TakeConnection();
+            var server = await SteamSession.Instance.CDNPool.TakeConnection();
             try
             {
-                // Logger.Debug($"Downloading chunk {BitConverter.ToString(chunk.ChunkID)} with server {server.VHost}");
-                downloadedChunk = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, depotKey);
+                Logger.Debug($"Downloading chunk {BitConverter.ToString(chunk.ChunkID)} with server {server.VHost}");
+                var written = await SteamSession.Instance.cdnClient.DownloadDepotChunkAsync(manifest.DepotID, chunk, server, chunkBuffer, depotKey);
+
+                if (written == 0) {
+                    throw new Exception("Number of bytes written was 0!");
+                };
+
+                SteamSession.Instance.CDNPool.ReturnConnection(server);
+                return new DownloadedChunkInfo(chunkBuffer, written, chunk);
             }
             catch (Exception e)
             {
                 Logger.Debug($"Error while downloading chunk, retrying... ({e.Message})");
                 await Task.Delay(Program.Config.RetryDelay);
             }
+
             SteamSession.Instance.CDNPool.ReturnConnection(server);
 
             retryCount++;
         }
 
-        return downloadedChunk;
+        // Couldn't get chunk, don't leak buffer
+        ArrayPool<byte>.Shared.Return(chunkBuffer);
+        return null;
     }
 }

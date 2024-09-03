@@ -19,7 +19,7 @@ class Util
     }
 
     // copied from depotdownloader
-    public static byte[] AdlerHash(byte[] input)
+    public static uint AdlerHash(byte[] input)
     {
         uint a = 0, b = 0;
         for (var i = 0; i < input.Length; i++)
@@ -28,6 +28,6 @@ class Util
             b = (b + a) % 65521;
         }
 
-        return BitConverter.GetBytes(a | (b << 16));
+        return a | (b << 16);
     }
 }

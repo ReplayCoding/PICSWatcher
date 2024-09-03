@@ -46,20 +46,6 @@ class Downloader
         }
     }
 
-    class DownloadedChunkInfo
-    {
-        public SteamKit2.CDN.DepotChunk? DownloadedChunk;
-        public DepotManifest.ChunkData ChunkInfo;
-
-        public DownloadedChunkInfo(SteamKit2.CDN.DepotChunk? downloadedChunk, DepotManifest.ChunkData chunkInfo) => (DownloadedChunk, ChunkInfo) = (downloadedChunk, chunkInfo);
-    }
-
-    async static Task<DownloadedChunkInfo> DownloadChunk(DepotManifest manifest, DepotManifest.ChunkData chunk, byte[] depotKey)
-    {
-        var downloadedChunkInfo = await InfoFetcher.DownloadChunk(manifest, chunk, depotKey);
-        return new DownloadedChunkInfo(downloadedChunkInfo, chunk);
-    }
-
     async static Task DownloadFile(string outFile, DepotManifest manifest, DepotManifest.FileData manifestFile, byte[] depotKey, DepotManifest.FileData? prevManifestFile, string? prevDir = null)
     {
         var prevFilePath = Path.Join(prevDir, manifestFile.FileName);
@@ -96,7 +82,7 @@ class Downloader
         {
             of.SetLength((long)manifestFile.TotalSize);
 
-            var chunksToDownload = new List<Task<DownloadedChunkInfo>>();
+            var chunksToDownload = new List<Task<InfoFetcher.DownloadedChunkInfo?>>();
             foreach (var chunk in manifestFile.Chunks)
             {
                 byte[]? downloadedChunk = null;
@@ -112,15 +98,15 @@ class Downloader
                         prevFile.Seek((long)prevChunk.Offset, SeekOrigin.Begin);
                         await prevFile.ReadAsync(tmp, 0, tmp.Length);
 
-                        var adler = Util.AdlerHash(tmp);
-                        if (adler.SequenceEqual(prevChunk.Checksum))
+                        uint adler = Util.AdlerHash(tmp);
+                        if (adler == prevChunk.Checksum)
                         {
                             // We found a chunk to reuse!
                             downloadedChunk = tmp;
                         }
                         else
                         {
-                            Logger.Warn($"Couldn't reuse chunk for file {0} because hash doesn't match", manifestFile.FileName);
+                            Logger.Warn($"Couldn't reuse chunk for file {manifestFile.FileName} because hash doesn't match ({adler} != {prevChunk.Checksum})");
                         }
                     }
                     catch
@@ -132,7 +118,8 @@ class Downloader
                 // Couldn't reuse chunk, download it
                 if (downloadedChunk == null)
                 {
-                    chunksToDownload.Add(DownloadChunk(manifest, chunk, depotKey));
+                    Logger.Debug($"Queuing chunk {BitConverter.ToString(chunk.ChunkID)}");
+                    chunksToDownload.Add(InfoFetcher.DownloadChunk(manifest, chunk, depotKey));
                 }
                 else
                 {
@@ -143,20 +130,22 @@ class Downloader
 
             }
 
+            Logger.Debug("Queued chunks, waiting...");
+
             while (chunksToDownload.Any())
             {
-                Task<DownloadedChunkInfo> chunkTask = await Task.WhenAny(chunksToDownload);
+                Task<InfoFetcher.DownloadedChunkInfo?> chunkTask = await Task.WhenAny(chunksToDownload);
                 chunksToDownload.Remove(chunkTask);
 
-                DownloadedChunkInfo chunk = await chunkTask;
+                InfoFetcher.DownloadedChunkInfo? chunk = await chunkTask;
 
-                if (chunk.DownloadedChunk == null)
+                if (chunk == null)
                     throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkInfo.ChunkID)} from manifest {manifest.ManifestGID}");
 
-                byte[] chunkData = chunk.DownloadedChunk.Data;
+                byte[] chunkData = chunk.Data;
 
                 of.Seek((long)chunk.ChunkInfo.Offset, SeekOrigin.Begin);
-                of.Write(chunkData, 0, chunkData.Length);
+                of.Write(chunkData, 0, chunk.Length);
             }
         };
 

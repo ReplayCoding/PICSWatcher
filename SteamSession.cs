@@ -29,7 +29,9 @@ class SteamSession
 
     public SteamSession()
     {
-        client = new SteamClient();
+        // Certain steam servers are only accepting WebSocket connections.
+        // See https://github.com/SteamRE/SteamKit/pull/1420 for details.
+        client = new SteamClient(SteamConfiguration.Create( c => c.WithProtocolTypes(ProtocolTypes.Tcp | ProtocolTypes.WebSocket) ));
 
         user = client.GetHandler<SteamUser>();
         apps = client.GetHandler<SteamApps>();

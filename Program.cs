@@ -24,7 +24,7 @@ class Program
 
     private static int Main(string[] args)
     {
-        var configOption = new Option<FileInfo>(name: "--config", description: "the configuration file to use");
+        var configOption = new Option<FileInfo>(name: "--config", description: "the configuration file to use") { IsRequired = true };
         var resetLastProcessedToZero = new Option<bool>(name: "--reset-last-processed-to-zero", description: "this resets the stored last processed change id to zero, forcing a redownload of every change in the db");
 
         var rootCommand = new RootCommand("PICS Watcher");

@@ -39,9 +39,16 @@ class CDNPool
         Logger.Info($"Got {Servers.Count} CDN servers");
     }
 
-    public Server TakeConnection()
+    public async Task<Server> TakeConnection()
     {
-        return Servers.Take();
+        while (true) {
+            if (Servers.TryTake(out var server)) {
+                return server;
+            }
+
+            await Task.Delay(100);
+        };
+
     }
 
     public void ReturnConnection(Server server)
