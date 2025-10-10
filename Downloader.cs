@@ -140,7 +140,7 @@ class Downloader
                 InfoFetcher.DownloadedChunkInfo? chunk = await chunkTask;
 
                 if (chunk == null)
-                    throw new InvalidDataException($"Failed to download chunk {BitConverter.ToString(chunk.ChunkInfo.ChunkID)} from manifest {manifest.ManifestGID}");
+                    throw new InvalidDataException($"Failed to download chunk from manifest {manifest.ManifestGID}");
 
                 byte[] chunkData = chunk.Data;
 
